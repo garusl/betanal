@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetTracker Pro Cloud - Единая Панель</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // НАСТРОЙКА ДЛЯ GITHUB: Вставьте сюда ваши ключи вместо null
+        const manualConfig = null; 
+
+        let firebaseConfig = null;
+        try {
+            firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : manualConfig;
+        } catch (e) {
+            firebaseConfig = manualConfig;
+        }
+
+        if (firebaseConfig && firebaseConfig.apiKey) {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'bet-tracker-pro-public';
+
+            window.fb = { 
+                db, auth, appId, 
+                collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc,
+                signInAnonymously, signInWithCustomToken, onAuthStateChanged
+            };
+        } else {
+            console.error("Firebase Config missing!");
+        }
+
+        window.addEventListener('load', () => {
+            updateAdminUI();
+            if (window.fb) initAuth();
+            else document.getElementById('loading').style.display = 'none';
+        });
+
+        async function initAuth() {
+            const { auth, signInAnonymously, signInWithCustomToken } = window.fb;
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth); // Для всех посетителей с GitHub
+                }
+            } catch (err) {
+                console.error("Auth error:", err);
+            }
+
+            window.fb.onAuthStateChanged(auth, user => {
+                if (user) {
+                    document.getElementById('loading').style.display = 'none';
+                    initDataListeners();
+                }
+            });
+        }
+    </script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0f172a',
+                        accent: '#3b82f6',
+                        win: '#10b981',
+                        loss: '#ef4444',
+                        refund: '#64748b',
+                        neon: '#00FFA3'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        .chart-container { position: relative; width: 100%; height: 300px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .custom-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+        .custom-modal.active { display: flex; }
+        .loading-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; flex-direction: column; gap: 1rem; }
+        /* Custom scrollbar for draft list */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f8fafc; border-radius: 8px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row min-h-screen bg-[#f8fafc]">
+
+    <div id="loading" class="loading-overlay">
+        <div class="animate-spin text-4xl text-white">⚽</div>
+        <p class="font-bold tracking-widest uppercase text-xs text-white">Подключение к базе данных...</p>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="w-full md:w-72 bg-primary text-white flex flex-col shadow-2xl z-20 shrink-0">
+        <div class="p-8">
+            <h1 class="text-2xl font-bold tracking-tight flex items-center gap-3">
+                <span class="text-3xl">📊</span> BetTracker
+            </h1>
+            <p class="text-slate-400 text-[10px] mt-2 uppercase tracking-widest font-black">Cloud Edition</p>
+        </div>
+        <nav class="flex-1 px-4 space-y-2">
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-accent text-white font-bold shadow-lg">
+                <span>🏠</span> Дашборд
+            </button>
+            <button onclick="switchTab('add-bet')" id="nav-add-bet" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-slate-800 transition-all font-medium">
+                <span>➕</span> Новая ставка
+            </button>
+        </nav>
+        <div class="p-6 border-t border-slate-800 flex flex-col items-center">
+            <p class="text-[9px] text-slate-500 uppercase font-bold mb-2">Статус синхронизации</p>
+            <div id="sync-status" class="flex items-center gap-2 text-[10px] text-emerald-400 font-bold">
+                <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span> ONLINE
+            </div>
+            <!-- ADMIN TOGGLE -->
+            <div id="admin-status-text" onclick="toggleAdmin()" class="text-[10px] text-slate-500 font-bold mt-4 cursor-pointer hover:text-white transition-colors bg-slate-800/50 px-4 py-2 rounded-lg w-full text-center">
+                👁️ ТОЛЬКО ЧТЕНИЕ
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 h-screen">
+        
+        <!-- DASHBOARD TAB -->
+        <div id="tab-dashboard" class="tab-content active space-y-10 pb-20">
+            <header class="flex flex-col lg:flex-row justify-between items-start gap-6">
+                <div>
+                    <h2 class="text-3xl font-bold text-slate-800">Рабочая панель</h2>
+                    <p class="text-slate-500 font-medium">Публичный обзор эффективности стратегий</p>
+                </div>
+                
+                <div class="flex items-center gap-6 self-end lg:self-auto">
+                    <div class="bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-end">
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Общий баланс</p>
+                        <p class="text-2xl font-mono font-bold text-accent" id="global-bank">0.00 ₴</p>
+                    </div>
+                    <div class="flex flex-wrap gap-3" id="strategy-chips"></div>
+                </div>
+            </header>
+
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <p class="text-slate-400 text-[10px] font-bold uppercase mb-2 tracking-tighter">Начальный / Текущий банк</p>
+                    <p class="text-2xl font-bold text-slate-800" id="stat-initial">0 ₴</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <p class="text-slate-400 text-[10px] font-bold uppercase mb-2 tracking-tighter">Чистая прибыль</p>
+                    <p class="text-2xl font-bold" id="stat-profit">0 ₴</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <p class="text-slate-400 text-xs font-bold uppercase mb-2 tracking-tighter">Winrate</p>
+                    <p class="text-2xl font-bold text-slate-800" id="stat-winrate">0%</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <p class="text-slate-400 text-xs font-bold uppercase mb-2 tracking-tighter">ROI</p>
+                    <p class="text-2xl font-bold text-slate-800" id="stat-roi">0%</p>
+                </div>
+            </div>
+
+            <!-- HISTORY SECTION -->
+            <section class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2 italic uppercase">
+                        <span>📜</span> История и Протокол
+                    </h3>
+                    <button onclick="autoResolveBets()" id="btn-auto-resolve" class="text-[10px] font-bold bg-white hover:bg-slate-200 text-primary px-4 py-2 rounded-xl transition-colors flex items-center gap-2 border border-slate-200 shadow-sm">
+                        <span class="text-sm">📡</span> Авто-расчет Live
+                    </button>
+                </div>
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
+                                <tr>
+                                    <th class="px-6 py-4">События / Дата</th>
+                                    <th class="px-6 py-4">Стратегия</th>
+                                    <th class="px-6 py-4 text-center">Прогноз</th>
+                                    <th class="px-6 py-4 text-center">Коэфф</th>
+                                    <th class="px-6 py-4 text-center">Сумма</th>
+                                    <th class="px-6 py-4 text-right">Результат / Опции</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bets-table-body" class="divide-y divide-slate-50 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STRATEGIES SECTION -->
+            <section class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-bold text-slate-800 italic uppercase"><span>🎯</span> Ваши стратегии</h3>
+                    <button onclick="openStrategyModal()" class="bg-primary text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md">
+                        + Новая стратегия
+                    </button>
+                </div>
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold tracking-widest">
+                                <tr>
+                                    <th class="px-6 py-4">Название</th>
+                                    <th class="px-6 py-4">Банк (Нач / Тек)</th>
+                                    <th class="px-6 py-4 text-center">Всего игр</th>
+                                    <th class="px-6 py-4 text-right">Опции</th>
+                                </tr>
+                            </thead>
+                            <tbody id="strategy-table-body" class="divide-y divide-slate-50 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ANALYTICS -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pt-10 border-t border-slate-200">
+                <div class="lg:col-span-2 bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="font-bold text-slate-800 uppercase italic">График доходности</h3>
+                        <div id="chart-line-val" class="text-xs font-mono font-bold text-accent"></div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                    <h3 class="font-bold text-slate-800 uppercase italic mb-6">Баланс исходов</h3>
+                    <div class="chart-container">
+                        <canvas id="doughnutChart"></canvas>
+                    </div>
+                    <div id="chart-pie-legend" class="mt-4 grid grid-cols-3 gap-2 text-[10px] font-bold text-center uppercase tracking-tighter"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADD BET TAB -->
+        <div id="tab-add-bet" class="tab-content max-w-5xl mx-auto py-10 px-4">
+            <div class="mb-10 text-center">
+                <h2 class="text-4xl font-extrabold text-slate-800 mb-2 uppercase italic tracking-tighter">Новая установка</h2>
+                <p class="text-slate-500 font-medium">Работа с актуальной линией букмекера</p>
+            </div>
+
+            <div class="bg-white p-8 md:p-12 rounded-[3rem] shadow-2xl border border-slate-100">
+                <form id="bet-form" onsubmit="handleBetSubmit(event)" class="space-y-10">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегию</label>
+                            <select id="f-strategy" required class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-lg focus:border-accent">
+                                <!-- JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Тип системы</label>
+                            <div class="flex gap-4 p-1 bg-slate-50 border border-slate-200 rounded-2xl">
+                                <label class="flex-1">
+                                    <input type="radio" name="bet_type" value="Ординар" checked onchange="toggleBetUI()" class="peer sr-only">
+                                    <div class="p-3 text-center rounded-xl peer-checked:bg-accent peer-checked:text-white cursor-pointer transition-all font-bold text-xs uppercase">Ординар</div>
+                                </label>
+                                <label class="flex-1">
+                                    <input type="radio" name="bet_type" value="Экспресс" onchange="toggleBetUI()" class="peer sr-only">
+                                    <div class="p-3 text-center rounded-xl peer-checked:bg-accent peer-checked:text-white cursor-pointer transition-all font-bold text-xs uppercase">Экспресс</div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Event Picker -->
+                    <div class="bg-slate-50 p-6 md:p-8 rounded-[2rem] border border-slate-200 space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <h4 class="font-black text-slate-700 uppercase text-xs tracking-widest" id="event-box-title">Конструктор события</h4>
+                            
+                            <div class="flex items-center gap-3">
+                                <!-- Кнопка обновления линии -->
+                                <button type="button" id="btn-fetch-line" onclick="fetchLiveLine()" class="text-[10px] font-bold bg-white hover:bg-slate-200 text-primary px-4 py-2 rounded-xl transition-colors flex items-center gap-2 border border-slate-200 shadow-sm">
+                                    <span class="text-sm">🔄</span> Загрузить Live линию
+                                </button>
+                                <div id="express-odds-badge" class="hidden bg-primary text-white px-4 py-1.5 rounded-full font-mono text-[10px] font-bold">ОБЩИЙ КЭФ: <span id="total-express-odds" class="text-accent">1.00</span></div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4 items-end">
+                            <div class="lg:col-span-2">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Лига</label>
+                                <select id="f-league" onchange="updateMatches()" required class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-xs font-bold">
+                                    <option value="">-- Лига --</option>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-3">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Матч</label>
+                                <select id="f-match" onchange="updateOdds()" required class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-[10px] font-bold">
+                                    <option value="">-- Сначала лигу --</option>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-2">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Прогноз</label>
+                                <select id="f-forecast" onchange="updateOdds()" required class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-[10px] font-black text-accent">
+                                    <option value="П1">Победа 1 (П1)</option>
+                                    <option value="X">Ничья (X)</option>
+                                    <option value="П2">Победа 2 (П2)</option>
+                                    <option value="1X">1X (Не проиграют 1)</option>
+                                    <option value="X2">X2 (Не проиграют 2)</option>
+                                    <option value="ТБ 2.5">Тотал Больше 2.5</option>
+                                    <option value="ТМ 2.5">Тотал Меньше 2.5</option>
+                                    <option value="ОЗ - Да">Обе Забьют - Да</option>
+                                </select>
+                            </div>
+                            <div class="lg:col-span-1">
+                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Коэфф</label>
+                                <!-- Auto-populated odds input -->
+                                <input type="number" step="0.01" id="f-odds" required class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-[10px] font-mono font-bold text-center" placeholder="1.00">
+                            </div>
+                        </div>
+
+                        <!-- Button Full Width -->
+                        <button type="button" onclick="addEventToDraft()" class="w-full bg-slate-800 text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all shadow-md">
+                            Добавить в купон
+                        </button>
+
+                        <!-- Draft Container -->
+                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mt-6">
+                            <div id="draft-list" class="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scroll"></div>
+                            
+                            <!-- Express Badge moved to the bottom -->
+                            <div id="express-odds-badge-bottom" class="hidden mt-4 pt-4 border-t border-slate-50 flex justify-between items-center">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Итоговый коэффициент:</span>
+                                <span class="bg-accent text-white px-4 py-1.5 rounded-full font-mono text-sm font-bold shadow-md">@ <span id="total-express-odds-bottom">1.00</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Общая сумма ставки (₴)</label>
+                        <input type="number" id="f-stake" min="1" required placeholder="1000" class="w-full p-6 bg-slate-50 border border-slate-200 rounded-3xl outline-none text-5xl font-black focus:border-accent transition-all">
+                    </div>
+
+                    <button type="submit" id="submit-bet-btn" class="w-full bg-accent hover:bg-blue-600 text-white font-black py-6 rounded-3xl text-2xl uppercase italic tracking-tighter shadow-2xl transition-all active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed" disabled>
+                        ⚡ В игру
+                    </button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <!-- CUSTOM MODALS (Обход ограничений браузера) -->
+    
+    <!-- Password Modal -->
+    <div id="password-modal" class="custom-modal">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl text-center">
+            <div class="text-5xl mb-4">🔐</div>
+            <h3 class="text-xl font-bold text-slate-800 mb-2">Требуется доступ</h3>
+            <p class="text-slate-500 mb-6 text-sm">Введите пароль администратора</p>
+            <input type="password" id="admin-password-input" onkeydown="if(event.key === 'Enter') submitPassword()" class="w-full p-4 mb-2 bg-slate-50 border border-slate-200 rounded-xl outline-none text-center font-bold tracking-widest focus:border-accent" placeholder="Пароль">
+            <p id="password-error" class="text-xs text-red-500 mb-4 hidden">Неверный пароль</p>
+            <div class="flex gap-3 mt-4">
+                <button onclick="closePasswordModal()" class="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-all">Отмена</button>
+                <button onclick="submitPassword()" class="flex-1 py-3 bg-accent text-white font-bold rounded-xl shadow-lg hover:bg-blue-600 transition-all">Вход</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div id="alert-modal" class="custom-modal">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl text-center">
+            <div class="text-5xl mb-4">ℹ️</div>
+            <h3 class="text-xl font-bold text-slate-800 mb-2">Уведомление</h3>
+            <p id="alert-text" class="text-slate-500 mb-8 text-sm leading-relaxed"></p>
+            <button onclick="closeAlertModal()" class="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all">Понятно</button>
+        </div>
+    </div>
+
+    <!-- Strategy Edit Modal -->
+    <div id="strategy-modal" class="custom-modal">
+        <div class="bg-white rounded-[2.5rem] p-10 max-w-md w-full mx-4 shadow-2xl border-b-8 border-accent">
+            <h3 id="modal-title" class="text-2xl font-black uppercase italic mb-8">Настройка стратегии</h3>
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Название</label>
+                    <input type="text" id="m-strat-name" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Стартовый банк (₴)</label>
+                    <input type="number" id="m-strat-bank" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-black text-xl">
+                </div>
+                <input type="hidden" id="m-strat-id">
+                <div class="flex gap-4 pt-8">
+                    <button onclick="closeStrategyModal()" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">Отмена</button>
+                    <button onclick="saveStrategy()" class="flex-1 py-4 bg-accent text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Dialog Modal -->
+    <div id="confirm-modal" class="custom-modal">
+        <div class="bg-white rounded-[2rem] p-10 max-w-sm w-full mx-4 shadow-2xl text-center">
+            <div class="text-6xl mb-6">⚠️</div>
+            <h3 class="text-xl font-black uppercase italic mb-4">Требуется подтверждение</h3>
+            <p id="confirm-text" class="text-slate-500 mb-10 text-sm font-medium"></p>
+            <div class="flex gap-4">
+                <button onclick="closeConfirmModal()" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">Назад</button>
+                <button id="confirm-btn" class="flex-1 py-4 bg-loss text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Подтвердить</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- STATE AND DATA ---
+        let strategies = [];
+        let bets = [];
+        let draftEvents = [];
+        let currentFilter = 'all';
+        let mainChart = null, doughnutChart = null;
+
+        // Эмулятор базы Live-линии (вместо реального API пока нет ключа)
+        let liveLineData = {};
+
+        // Список поддерживаемых лиг для эмулятора
+        const SUPPORTED_LEAGUES = {
+            "EPL": "🇬🇧 Англия: Премьер-лига",
+            "LaLiga": "🇪🇸 Испания: Ла Лига",
+            "SerieA": "🇮🇹 Италия: Серия А",
+            "Bundesliga": "🇩🇪 Германия: Бундеслига",
+            "Ligue1": "🇫🇷 Франция: Лига 1",
+            "UCL": "🏆 Лига Чемпионов"
+        };
+
+        // --- CUSTOM MODALS & ADMIN LOGIC ---
+        function checkAdmin() {
+            if (localStorage.getItem('bt_admin_access') === '1111111') return true;
+            
+            document.getElementById('password-modal').classList.add('active');
+            const pwdInput = document.getElementById('admin-password-input');
+            pwdInput.value = '';
+            document.getElementById('password-error').classList.add('hidden');
+            setTimeout(() => pwdInput.focus(), 100);
+            return false;
+        }
+
+        function submitPassword() {
+            const pass = document.getElementById('admin-password-input').value;
+            if (pass === '1111111') {
+                localStorage.setItem('bt_admin_access', '1111111');
+                updateAdminUI();
+                closePasswordModal();
+                showAlert('Режим администратора активирован! Теперь вы можете вносить изменения.');
+            } else {
+                document.getElementById('password-error').classList.remove('hidden');
+            }
+        }
+
+        function closePasswordModal() {
+            document.getElementById('password-modal').classList.remove('active');
+        }
+
+        function showAlert(text) {
+            document.getElementById('alert-text').innerText = text;
+            document.getElementById('alert-modal').classList.add('active');
+        }
+
+        function closeAlertModal() {
+            document.getElementById('alert-modal').classList.remove('active');
+        }
+
+        let confirmCallback = null;
+        function showConfirm(text, callback) {
+            document.getElementById('confirm-text').innerText = text;
+            confirmCallback = callback;
+            document.getElementById('confirm-modal').classList.add('active');
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.remove('active');
+            confirmCallback = null;
+        }
+
+        document.getElementById('confirm-btn').onclick = () => {
+            if(confirmCallback) confirmCallback();
+            closeConfirmModal();
+        };
+
+        function toggleAdmin() {
+            if (localStorage.getItem('bt_admin_access') === '1111111') {
+                showConfirm("Выйти из режима администратора?", () => {
+                    localStorage.removeItem('bt_admin_access');
+                    updateAdminUI();
+                    showAlert("Вы перешли в режим 'Только чтение'");
+                });
+            } else {
+                checkAdmin();
+            }
+        }
+
+        function updateAdminUI() {
+            const isAdm = localStorage.getItem('bt_admin_access') === '1111111';
+            const statusEl = document.getElementById('admin-status-text');
+            if (statusEl) {
+                statusEl.innerText = isAdm ? "🔓 РЕЖИМ АДМИНА" : "👁️ ТОЛЬКО ЧТЕНИЕ";
+                statusEl.className = isAdm 
+                    ? "text-[10px] font-bold mt-4 cursor-pointer text-emerald-400 bg-slate-800/50 px-4 py-2 rounded-lg w-full text-center transition-colors" 
+                    : "text-[10px] font-bold mt-4 cursor-pointer text-slate-500 hover:text-white bg-slate-800/50 px-4 py-2 rounded-lg w-full text-center transition-colors";
+            }
+        }
+
+        // --- PUBLIC FIREBASE SYNC ---
+        let syncUnsubscribe = null;
+
+        function initDataListeners() {
+            const { db, appId, doc, onSnapshot } = window.fb;
+            
+            if (syncUnsubscribe) syncUnsubscribe();
+
+            const stateRef = doc(db, 'artifacts', appId, 'public', 'data', 'platform', 'state');
+            syncUnsubscribe = onSnapshot(stateRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    strategies = data.strategies || [];
+                    bets = data.bets || [];
+                } else if (localStorage.getItem('bt_admin_access') === '1111111') {
+                    // Init empty DB if admin
+                    strategies = [{ id: 's1', name: 'ФЛЭТ 3%', bank: 10000 }];
+                    bets = [];
+                    saveToCloud(); 
+                }
+                renderDashboard();
+                if (document.getElementById('tab-add-bet').classList.contains('active')) {
+                    initAddBetForm();
+                }
+            }, (err) => console.error("Sync error:", err));
+        }
+
+        async function saveToCloud() {
+            if (localStorage.getItem('bt_admin_access') !== '1111111') return;
+            
+            if (window.fb && window.fb.db && window.fb.auth.currentUser) {
+                const { db, appId, doc, setDoc } = window.fb;
+                const stateRef = doc(db, 'artifacts', appId, 'public', 'data', 'platform', 'state');
+                try {
+                    await setDoc(stateRef, { strategies, bets }, { merge: true });
+                } catch(e) {
+                    console.error("Ошибка сохранения:", e);
+                    showAlert("Произошла ошибка при сохранении данных в облако.");
+                }
+            } else {
+                localStorage.setItem('bt_local_strats', JSON.stringify(strategies));
+                localStorage.setItem('bt_local_bets', JSON.stringify(bets));
+                renderDashboard();
+            }
+        }
+
+        // --- NAVIGATION ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            const tabElement = document.getElementById(`tab-${tabId}`);
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
+            
+            document.querySelectorAll('nav button').forEach(b => {
+                b.classList.remove('bg-accent', 'text-white', 'shadow-lg');
+                b.classList.add('text-slate-400');
+            });
+            const activeNav = document.getElementById(`nav-${tabId}`);
+            if (activeNav) activeNav.classList.add('bg-accent', 'text-white', 'shadow-lg');
+
+            if (tabId === 'dashboard') renderDashboard();
+            if (tabId === 'add-bet') initAddBetForm();
+        }
+
+        // --- DASHBOARD LOGIC ---
+        function renderDashboard() {
+            renderStrategyChips();
+            renderStrategyTable();
+            renderHistory();
+            updateStats();
+        }
+
+        function renderStrategyChips() {
+            const container = document.getElementById('strategy-chips');
+            if (!container) return;
+            let html = `<button onclick="setFilter('all')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}">ВСЕ СТРАТЕГИИ</button>`;
+            strategies.forEach(s => {
+                html += `<button onclick="setFilter('${s.id}')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === s.id ? 'bg-accent text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}">${s.name}</button>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function setFilter(f) { currentFilter = f; renderDashboard(); }
+
+        function updateStats() {
+            const filteredBets = currentFilter === 'all' ? bets : bets.filter(b => b.strategyId === currentFilter);
+            const filteredStrats = currentFilter === 'all' ? strategies : strategies.filter(s => s.id === currentFilter);
+            
+            const initialBank = filteredStrats.reduce((acc, s) => acc + (parseFloat(s.bank) || 0), 0);
+            let profit = 0, wins = 0, losses = 0, refunds = 0, totalStaked = 0;
+            
+            const resolved = filteredBets.filter(b => b.status !== 'Active');
+            resolved.forEach(b => {
+                totalStaked += b.stake;
+                if (b.status === 'Win') {
+                    wins++;
+                    profit += (b.stake * b.odds) - b.stake;
+                } else if (b.status === 'Loss') {
+                    losses++;
+                    profit -= b.stake;
+                } else if (b.status === 'Refund') {
+                    refunds++;
+                }
+            });
+
+            // Calculate active stakes for current Bank
+            const activeStakes = filteredBets.filter(b => b.status === 'Active').reduce((acc, b) => acc + b.stake, 0);
+            const currentBank = initialBank + profit - activeStakes;
+
+            const wr = (wins + losses) > 0 ? (wins / (wins + losses) * 100).toFixed(1) : 0;
+            const roi = totalStaked > 0 ? (profit / totalStaked * 100).toFixed(1) : 0;
+
+            const statInitialEl = document.getElementById('stat-initial');
+            if (statInitialEl) {
+                statInitialEl.innerHTML = `${initialBank.toLocaleString()} <span class="text-slate-300 mx-1 font-normal">/</span> <span class="text-accent">${currentBank.toLocaleString()} ₴</span>`;
+            }
+            
+            const profitEl = document.getElementById('stat-profit');
+            if (profitEl) {
+                profitEl.innerText = `${profit > 0 ? '+' : ''}${Math.abs(profit).toLocaleString()} ₴`;
+                profitEl.className = `text-xl font-bold ${profit > 0 ? 'text-win' : (profit < 0 ? 'text-loss' : 'text-slate-800')}`;
+            }
+
+            const statWinrateEl = document.getElementById('stat-winrate');
+            if (statWinrateEl) statWinrateEl.innerText = wr + '%';
+            
+            const statRoiEl = document.getElementById('stat-roi');
+            if (statRoiEl) statRoiEl.innerText = roi + '%';
+
+            // Global Bank (Regardless of filter)
+            const totalInitial = strategies.reduce((acc, s) => acc + (parseFloat(s.bank) || 0), 0);
+            let totalProfit = 0;
+            let totalActiveStakes = 0;
+            bets.forEach(b => {
+                if(b.status === 'Win') totalProfit += (b.stake * b.odds) - b.stake;
+                else if(b.status === 'Loss') totalProfit -= b.stake;
+                else if(b.status === 'Active') totalActiveStakes += b.stake;
+            });
+            const globalBankEl = document.getElementById('global-bank');
+            if (globalBankEl) globalBankEl.innerText = `${(totalInitial + totalProfit - totalActiveStakes).toLocaleString()} ₴`;
+
+            updateCharts(resolved, wins, losses, refunds, profit);
+        }
+
+        function updateCharts(resolvedData, wins, losses, refunds, currentProfit) {
+            const data = [...resolvedData].sort((a,b) => new Date(a.date) - new Date(b.date));
+            const labels = data.map((_, i) => `Матч ${i+1}`);
+            let runningProfit = 0;
+            const profitTrend = data.map(b => {
+                if (b.status === 'Win') runningProfit += (b.stake * b.odds) - b.stake;
+                if (b.status === 'Loss') runningProfit -= b.stake;
+                return runningProfit;
+            });
+
+            const lineChartValEl = document.getElementById('chart-line-val');
+            if (lineChartValEl) {
+                lineChartValEl.innerText = `Итог: ${currentProfit.toLocaleString()} ₴`;
+            }
+
+            const mainChartCanvas = document.getElementById('mainChart');
+            if (mainChartCanvas) {
+                if (mainChart) mainChart.destroy();
+                mainChart = new Chart(mainChartCanvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: labels.length ? labels : ['0'],
+                        datasets: [{
+                            label: 'Профит',
+                            data: profitTrend.length ? profitTrend : [0],
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                            fill: true, tension: 0.4, borderWidth: 3, pointRadius: 4, pointBackgroundColor: '#fff'
+                        }]
+                    },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, 
+                        plugins: { legend: { display: false } },
+                        scales: { y: { grid: { color: '#f8fafc' } }, x: { grid: { display: false } } }
+                    }
+                });
+            }
+
+            const pieLegendEl = document.getElementById('chart-pie-legend');
+            if (pieLegendEl) {
+                pieLegendEl.innerHTML = `
+                    <div class="text-win">Побед: ${wins}</div>
+                    <div class="text-loss">Проигрыш: ${losses}</div>
+                    <div class="text-slate-400">Возврат: ${refunds}</div>
+                `;
+            }
+
+            const doughnutChartCanvas = document.getElementById('doughnutChart');
+            if (doughnutChartCanvas) {
+                if (doughnutChart) doughnutChart.destroy();
+                doughnutChart = new Chart(doughnutChartCanvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Win', 'Loss', 'Refund'],
+                        datasets: [{
+                            data: [wins, losses, refunds],
+                            backgroundColor: ['#10b981', '#ef4444', '#64748b'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '80%', plugins: { legend: { display: false } } }
+                });
+            }
+        }
+
+        // --- HISTORY RENDER ---
+        function renderHistory() {
+            const body = document.getElementById('bets-table-body');
+            if (!body) return;
+            
+            // Filter by selected strategy before rendering history
+            const filteredBets = currentFilter === 'all' ? bets : bets.filter(b => b.strategyId === currentFilter);
+            const sorted = [...filteredBets].sort((a,b) => b.timestamp - a.timestamp); 
+            
+            body.innerHTML = sorted.map(b => {
+                const sName = strategies.find(x => x.id === b.strategyId)?.name || 'N/A';
+                let statusBadge = '';
+                if(b.status === 'Active') statusBadge = '<span class="status-pill bg-slate-100 text-slate-500">В ИГРЕ</span>';
+                else if(b.status === 'Win') statusBadge = '<span class="status-pill bg-emerald-100 text-emerald-600">WIN</span>';
+                else if(b.status === 'Loss') statusBadge = '<span class="status-pill bg-rose-100 text-rose-600">LOSS</span>';
+                else statusBadge = '<span class="status-pill bg-slate-200 text-slate-600">REFUND</span>';
+
+                let actionHtml = b.status === 'Active' 
+                    ? `<div class="flex justify-end gap-1">
+                        <button onclick="resolveBet(${b.id}, 'Win')" class="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-lg font-bold hover:bg-emerald-100">✓</button>
+                        <button onclick="resolveBet(${b.id}, 'Loss')" class="w-8 h-8 flex items-center justify-center bg-rose-50 text-rose-600 rounded-lg font-bold hover:bg-rose-100">✕</button>
+                        <button onclick="resolveBet(${b.id}, 'Refund')" class="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200">↩</button>
+                      </div>`
+                    : `<div class="flex items-center justify-end gap-3">${statusBadge}<button onclick="undoBet(${b.id})" class="text-slate-300 hover:text-accent">✏️</button></div>`;
+
+                const eventStr = b.events ? b.events.map(e => `${e.t1} - ${e.t2}`).join('<br>') : 'Неизвестно';
+                const forecastStr = b.events ? (b.events.length > 1 ? 'Экспресс' : b.events[0].forecast) : 'N/A';
+
+                return `
+                    <tr class="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                        <td class="px-6 py-4">
+                            <div class="font-bold text-slate-800">${eventStr}</div>
+                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">${b.league || ''} • ${b.date}</div>
+                        </td>
+                        <td class="px-6 py-4 text-slate-500 text-xs font-medium uppercase tracking-tighter">${sName}</td>
+                        <td class="px-6 py-4 text-center font-black text-accent">${forecastStr}</td>
+                        <td class="px-6 py-4 text-center font-mono font-bold">${b.odds.toFixed(2)}</td>
+                        <td class="px-6 py-4 text-center font-bold text-slate-700">${b.stake.toLocaleString()} ₴</td>
+                        <td class="px-6 py-4 text-right">${actionHtml}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function resolveBet(id, status) {
+            if (!checkAdmin()) return;
+            const idx = bets.findIndex(x => x.id === id);
+            if(idx > -1) {
+                bets[idx].status = status;
+                saveToCloud();
+            }
+        }
+
+        function undoBet(id) {
+            if (!checkAdmin()) return;
+            const idx = bets.findIndex(x => x.id === id);
+            if(idx > -1) {
+                bets[idx].status = 'Active';
+                saveToCloud();
+            }
+        }
+
+        // --- STRATEGY TABLE ---
+        function renderStrategyTable() {
+            const body = document.getElementById('strategy-table-body');
+            if (!body) return;
+            body.innerHTML = strategies.map(s => {
+                const sBets = bets.filter(b => b.strategyId === s.id);
+                let p = 0;
+                let activeStakes = 0;
+                sBets.forEach(b => {
+                    if (b.status === 'Win') p += (b.stake * b.odds) - b.stake;
+                    else if (b.status === 'Loss') p -= b.stake;
+                    else if (b.status === 'Active') activeStakes += b.stake;
+                });
+                const currentBank = (parseFloat(s.bank) || 0) + p - activeStakes;
+                
+                return `
+                    <tr class="hover:bg-slate-50/50 border-b border-slate-50">
+                        <td class="px-6 py-4 font-bold text-slate-800 uppercase tracking-tighter italic">${s.name}</td>
+                        <td class="px-6 py-4">
+                            <span class="text-slate-400 text-xs">${s.bank.toLocaleString()}</span> / 
+                            <span class="font-bold ${p >= 0 ? 'text-win' : 'text-loss'}">${currentBank.toLocaleString()} ₴</span>
+                        </td>
+                        <td class="px-6 py-4 text-slate-500 font-bold text-center">${sBets.length}</td>
+                        <td class="px-6 py-4 text-right space-x-3">
+                            <button onclick="openStrategyModal('${s.id}')" class="text-slate-400 hover:text-accent">✏️</button>
+                            <button onclick="confirmDeleteStrategy('${s.id}')" class="text-slate-400 hover:text-loss ml-2">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function openStrategyModal(id = null) {
+            if (!checkAdmin()) return;
+            const modal = document.getElementById('strategy-modal');
+            if (id) {
+                const s = strategies.find(x => x.id === id);
+                document.getElementById('m-strat-name').value = s ? s.name : "";
+                document.getElementById('m-strat-bank').value = s ? s.bank : "";
+                document.getElementById('m-strat-id').value = s ? s.id : "";
+            } else {
+                document.getElementById('m-strat-name').value = ""; 
+                document.getElementById('m-strat-bank').value = ""; 
+                document.getElementById('m-strat-id').value = "";
+            }
+            modal.classList.add('active');
+        }
+
+        function closeStrategyModal() { document.getElementById('strategy-modal').classList.remove('active'); }
+
+        function saveStrategy() {
+            if (!checkAdmin()) return;
+            const name = document.getElementById('m-strat-name').value;
+            const bank = parseFloat(document.getElementById('m-strat-bank').value);
+            const id = document.getElementById('m-strat-id').value;
+
+            if (!name || isNaN(bank)) {
+                showAlert("Заполните корректное название и начальный банк.");
+                return;
+            }
+            
+            if (id) {
+                const idx = strategies.findIndex(x => x.id === id);
+                if (idx > -1) {
+                    strategies[idx].name = name.toUpperCase();
+                    strategies[idx].bank = bank;
+                }
+            } else {
+                strategies.push({ id: 's' + Date.now(), name: name.toUpperCase(), bank });
+            }
+            saveToCloud();
+            closeStrategyModal();
+        }
+
+        function confirmDeleteStrategy(id) {
+            if (!checkAdmin()) return;
+            showConfirm("Удалить стратегию и все привязанные к ней ставки?", () => {
+                strategies = strategies.filter(s => s.id !== id);
+                bets = bets.filter(b => b.strategyId !== id);
+                saveToCloud();
+            });
+        }
+
+        // --- MOCK LIVE DATA FETCHER ---
+        async function fetchLiveLine() {
+            const btn = document.getElementById('btn-fetch-line');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<span class="animate-spin inline-block">↻</span> Загрузка...`;
+            btn.disabled = true;
+
+            // Имитация задержки сети
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            // Генератор случайных отклонений кэфов (±5%)
+            const randOdds = (base) => (base * (1 + (Math.random() * 0.1 - 0.05))).toFixed(2);
+
+            // Имитация ответа от API букмекера/Flashscore на сегодня
+            liveLineData = {
+                EPL: [
+                    { id: 'm1', t1: "Арсенал", t2: "Челси", odds: { "П1": randOdds(1.95), "X": randOdds(3.60), "П2": randOdds(4.20), "1X": 1.25, "X2": 1.95, "ТБ 2.5": randOdds(1.85), "ТМ 2.5": randOdds(1.95), "ОЗ - Да": randOdds(1.70) } },
+                    { id: 'm2', t1: "Ман Сити", t2: "Ливерпуль", odds: { "П1": randOdds(2.10), "X": randOdds(3.80), "П2": randOdds(3.10), "1X": 1.35, "X2": 1.70, "ТБ 2.5": randOdds(1.60), "ТМ 2.5": randOdds(2.30), "ОЗ - Да": randOdds(1.55) } },
+                    { id: 'm3', t1: "Тоттенхэм", t2: "МЮ", odds: { "П1": randOdds(2.35), "X": randOdds(3.50), "П2": randOdds(2.80), "1X": 1.40, "X2": 1.55, "ТБ 2.5": randOdds(1.65), "ТМ 2.5": randOdds(2.15), "ОЗ - Да": randOdds(1.50) } }
+                ],
+                LaLiga: [
+                    { id: 'm4', t1: "Реал Мадрид", t2: "Атлетико", odds: { "П1": randOdds(1.80), "X": randOdds(3.40), "П2": randOdds(4.50), "1X": 1.18, "X2": 2.05, "ТБ 2.5": randOdds(2.05), "ТМ 2.5": randOdds(1.75), "ОЗ - Да": randOdds(1.90) } },
+                    { id: 'm5', t1: "Барселона", t2: "Жирона", odds: { "П1": randOdds(1.45), "X": randOdds(4.80), "П2": randOdds(6.50), "1X": 1.10, "X2": 2.80, "ТБ 2.5": randOdds(1.50), "ТМ 2.5": randOdds(2.55), "ОЗ - Да": randOdds(1.65) } }
+                ],
+                UCL: [
+                    { id: 'm6', t1: "Бавария", t2: "ПСЖ", odds: { "П1": randOdds(2.15), "X": randOdds(3.90), "П2": randOdds(3.00), "1X": 1.35, "X2": 1.65, "ТБ 2.5": randOdds(1.55), "ТМ 2.5": randOdds(2.45), "ОЗ - Да": randOdds(1.48) } }
+                ],
+                SerieA: [
+                    { id: 'm7', t1: "Интер", t2: "Ювентус", odds: { "П1": randOdds(2.00), "X": randOdds(3.20), "П2": randOdds(4.00), "1X": 1.25, "X2": 1.80, "ТБ 2.5": randOdds(2.20), "ТМ 2.5": randOdds(1.65), "ОЗ - Да": randOdds(2.00) } }
+                ]
+            };
+
+            // Заполняем лиги на основе пришедших данных
+            const leagueSelect = document.getElementById('f-league');
+            leagueSelect.innerHTML = '<option value="">-- Лига --</option>';
+            Object.keys(liveLineData).forEach(leagueCode => {
+                leagueSelect.innerHTML += `<option value="${leagueCode}">${SUPPORTED_LEAGUES[leagueCode] || leagueCode}</option>`;
+            });
+
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            
+            updateMatches();
+            
+            // Небольшая визуальная подсказка
+            const badge = document.getElementById('event-box-title');
+            const originalColor = badge.className;
+            badge.classList.add('text-neon');
+            badge.innerText = "Конструктор (Live Линия Подключена)";
+            setTimeout(() => { badge.className = originalColor; }, 2000);
+        }
+
+        // --- ADD BET LOGIC ---
+        function initAddBetForm() {
+            const stratSelect = document.getElementById('f-strategy');
+            if(stratSelect) stratSelect.innerHTML = strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            
+            // Если данные уже загружены, просто обновляем селекты
+            if (Object.keys(liveLineData).length === 0) {
+                // Если нет - делаем авто-загрузку при открытии вкладки
+                fetchLiveLine();
+            } else {
+                updateMatches();
+            }
+
+            draftEvents = [];
+            renderDraftList();
+            toggleBetUI();
+        }
+
+        function toggleBetUI() {
+            const typeEl = document.querySelector('input[name="bet_type"]:checked');
+            if (!typeEl) return;
+            const type = typeEl.value;
+            const boxTitle = document.getElementById('event-box-title');
+            const badge = document.getElementById('express-odds-badge');
+            const badgeBottom = document.getElementById('express-odds-badge-bottom');
+            
+            if(type === 'Экспресс') {
+                if(boxTitle) boxTitle.innerText = "Конструктор Экспресса";
+                if(badge) badge.classList.add('hidden'); // Скрываем верхний
+                if(badgeBottom) badgeBottom.classList.remove('hidden'); // Показываем нижний
+            } else {
+                if(boxTitle) boxTitle.innerText = "Одиночное событие";
+                if(badge) badge.classList.add('hidden');
+                if(badgeBottom) badgeBottom.classList.add('hidden');
+                draftEvents = []; 
+                renderDraftList();
+            }
+            updateSubmitButton();
+        }
+
+        function updateMatches() {
+            const league = document.getElementById('f-league').value;
+            const matchSelect = document.getElementById('f-match');
+            
+            if (!league || !liveLineData[league]) { 
+                matchSelect.innerHTML = '<option value="">-- Сначала лигу --</option>'; 
+                document.getElementById('f-odds').value = '';
+                return; 
+            }
+            
+            const options = liveLineData[league].map(m => `<option value="${m.id}">${m.t1} - ${m.t2}</option>`).join('');
+            matchSelect.innerHTML = options;
+            
+            updateOdds(); // Обновляем кэф для выбранного первого матча
+        }
+
+        function updateOdds() {
+            const league = document.getElementById('f-league').value;
+            const matchId = document.getElementById('f-match').value;
+            const forecast = document.getElementById('f-forecast').value;
+            const oddsInput = document.getElementById('f-odds');
+
+            if (!league || !matchId || !liveLineData[league]) {
+                oddsInput.value = '';
+                return;
+            }
+
+            const match = liveLineData[league].find(m => m.id === matchId);
+            if (match && match.odds[forecast]) {
+                oddsInput.value = match.odds[forecast];
+            } else {
+                // Если котировки на этот рынок нет (fallback)
+                oddsInput.value = (Math.random() * 2 + 1.2).toFixed(2);
+            }
+        }
+
+        function addEventToDraft() {
+            const league = document.getElementById('f-league').value;
+            const matchSelect = document.getElementById('f-match');
+            const forecast = document.getElementById('f-forecast').value;
+            const odds = parseFloat(document.getElementById('f-odds').value);
+
+            if (!league || !matchSelect.value || isNaN(odds)) return;
+
+            // Достаем имена команд из текста выбранного option
+            const matchText = matchSelect.options[matchSelect.selectedIndex].text;
+            const [t1, t2] = matchText.split(' - ');
+
+            const type = document.querySelector('input[name="bet_type"]:checked').value;
+            const newEv = { id: Date.now(), league, t1: t1.trim(), t2: t2.trim(), forecast, odds };
+
+            if (type === 'Ординар') {
+                draftEvents = [newEv];
+            } else {
+                draftEvents.push(newEv);
+            }
+
+            renderDraftList();
+            updateSubmitButton();
+        }
+
+        function removeFromDraft(id) {
+            draftEvents = draftEvents.filter(e => e.id !== id);
+            renderDraftList();
+            updateSubmitButton();
+        }
+
+        function renderDraftList() {
+            const list = document.getElementById('draft-list');
+            const totalOddsEl = document.getElementById('total-express-odds');
+            const totalOddsBottomEl = document.getElementById('total-express-odds-bottom');
+            if(!list) return;
+
+            list.innerHTML = '';
+            let totalOdds = 1.0;
+            
+            draftEvents.forEach(e => {
+                totalOdds *= e.odds;
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 transition-all hover:border-slate-200";
+                div.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full bg-accent hidden sm:block"></div>
+                        <div class="text-xs">
+                            <span class="font-bold text-slate-800">${e.t1} - ${e.t2}</span> 
+                            <span class="text-accent ml-2 font-bold px-2 py-0.5 bg-blue-50 rounded-md">${e.forecast}</span>
+                            <span class="text-slate-500 ml-2 font-mono font-bold">@${e.odds.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <button type="button" onclick="removeFromDraft(${e.id})" class="text-loss hover:scale-110 transition-all font-black px-2">✕</button>
+                `;
+                list.appendChild(div);
+            });
+
+            if (totalOddsEl) totalOddsEl.innerText = totalOdds.toFixed(2);
+            if (totalOddsBottomEl) totalOddsBottomEl.innerText = totalOdds.toFixed(2);
+        }
+
+        function updateSubmitButton() {
+            const type = document.querySelector('input[name="bet_type"]:checked').value;
+            const btn = document.getElementById('submit-bet-btn');
+            if(!btn) return;
+            
+            let isValid = false;
+            if (type === 'Ординар' && draftEvents.length === 1) isValid = true;
+            if (type === 'Экспресс' && draftEvents.length >= 2) isValid = true;
+
+            if(isValid) {
+                btn.disabled = false;
+                btn.classList.remove('opacity-30', 'cursor-not-allowed');
+            } else {
+                btn.disabled = true;
+                btn.classList.add('opacity-30', 'cursor-not-allowed');
+            }
+        }
+
+        function handleBetSubmit(e) {
+            e.preventDefault();
+            if (!checkAdmin()) return;
+
+            const type = document.querySelector('input[name="bet_type"]:checked').value;
+            const stake = parseFloat(document.getElementById('f-stake').value);
+            
+            if(!stake || stake <= 0 || draftEvents.length === 0) {
+                showAlert("Укажите сумму ставки и добавьте исходы.");
+                return;
+            }
+
+            let finalOdds = 1.0;
+            draftEvents.forEach(ev => finalOdds *= ev.odds);
+
+            const newBet = {
+                id: Date.now(),
+                strategyId: document.getElementById('f-strategy').value,
+                type: type,
+                events: [...draftEvents],
+                odds: finalOdds,
+                stake: stake,
+                status: 'Active',
+                date: new Date().toISOString().split('T')[0],
+                timestamp: Date.now()
+            };
+
+            bets.push(newBet);
+            saveToCloud();
+            
+            document.getElementById('bet-form').reset();
+            draftEvents = [];
+            switchTab('dashboard');
+        }
+
+        // --- LIVE AUTO-RESOLVE (MOCK) ---
+        async function autoResolveBets() {
+            if (!checkAdmin()) return;
+            
+            const activeBets = bets.filter(b => b.status === 'Active');
+            if (activeBets.length === 0) {
+                showAlert("Нет активных ставок для расчета. Все события уже завершены.");
+                return;
+            }
+
+            const btn = document.getElementById('btn-auto-resolve');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<span class="animate-spin inline-block text-sm">↻</span> Сверка с Flashscore...`;
+            btn.disabled = true;
+
+            // Имитация задержки сети и проверки результатов
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            let resolvedCount = 0;
+            let winCount = 0;
+            let lossCount = 0;
+
+            bets.forEach(b => {
+                if (b.status === 'Active') {
+                    // Имитируем, что 60% матчей из списка уже закончились
+                    if (Math.random() > 0.4) {
+                        resolvedCount++;
+                        const rand = Math.random();
+                        let newStatus = 'Loss';
+                        if (rand > 0.5) { newStatus = 'Win'; winCount++; }
+                        else if (rand > 0.9) { newStatus = 'Refund'; }
+                        else { lossCount++; }
+                        
+                        b.status = newStatus;
+                    }
+                }
+            });
+
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+
+            if (resolvedCount > 0) {
+                saveToCloud(); // Автоматически обновит интерфейс и сохранит в базу
+                showAlert(`Авто-расчет завершен! Рассчитано событий: ${resolvedCount}. Побед: ${winCount}, Поражений: ${lossCount}.`);
+            } else {
+                showAlert("Матчи еще идут. Ни одно из активных событий пока не завершилось.");
+            }
+        }
+
+    </script>
+</body>
+</html>
