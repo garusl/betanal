@@ -112,10 +112,36 @@
                 </div>
                 
                 <div class="flex items-center gap-6 self-end lg:self-auto">
-                    <div class="bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-end">
-                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Общий баланс</p>
-                        <p class="text-2xl font-mono font-bold text-accent" id="global-bank">0.00 ₴</p>
+                    
+                    <!-- РЕАЛИСТИЧНЫЕ ФУТБОЛЬНЫЕ ВОРОТА - ОБЩИЙ БАНК -->
+                    <div class="relative flex flex-col items-center justify-center pt-8 pb-4 px-10 min-w-[260px] ml-auto">
+                        <!-- Штанги и перекладина -->
+                        <div class="absolute inset-0 rounded-t-2xl border-t-[12px] border-x-[12px] border-white shadow-[0_15px_35px_-5px_rgba(0,0,0,0.2),inset_0_5px_15px_rgba(0,0,0,0.1)] z-30 pointer-events-none">
+                            <div class="absolute inset-0 rounded-t-xl border-t-[4px] border-x-[4px] border-slate-200 mix-blend-multiply opacity-50"></div>
+                        </div>
+                        
+                        <!-- Сетка ворот -->
+                        <div class="absolute inset-x-[12px] top-[12px] bottom-0 z-10 overflow-hidden bg-slate-50/90" style="perspective: 400px;">
+                            <div class="absolute inset-0 opacity-30" style="background-image: repeating-linear-gradient(45deg, #475569 0, #475569 2px, transparent 2px, transparent 18px), repeating-linear-gradient(-45deg, #475569 0, #475569 2px, transparent 2px, transparent 18px); transform: rotateX(15deg) scale(1.1); transform-origin: top;"></div>
+                            <div class="absolute inset-0 shadow-[inset_0_40px_40px_rgba(0,0,0,0.05)]"></div>
+                        </div>
+
+                        <!-- Газон (Внутри ворот) -->
+                        <div class="absolute inset-x-[12px] bottom-0 h-[40%] z-20 overflow-hidden" style="perspective: 200px;">
+                            <div class="absolute inset-0 bg-gradient-to-t from-emerald-500 to-emerald-600 border-t border-emerald-400 shadow-[inset_0_10px_20px_rgba(0,0,0,0.3)]" style="transform: rotateX(45deg) scale(1.5); transform-origin: bottom;"></div>
+                            <!-- Линия ворот -->
+                            <div class="absolute bottom-1 left-0 right-0 h-1 bg-white opacity-80"></div>
+                        </div>
+                        
+                        <!-- Контент (Общий банк) -->
+                        <div class="relative z-40 bg-white/95 backdrop-blur-md px-6 py-4 rounded-xl shadow-2xl border border-white transform transition-transform hover:-translate-y-1 mt-2">
+                            <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1 text-center flex items-center justify-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-accent animate-pulse"></span> Общий баланс
+                            </p>
+                            <p class="text-3xl font-mono font-black text-slate-800" id="global-bank">0.00 ₴</p>
+                        </div>
                     </div>
+
                     <div class="flex flex-wrap gap-3" id="strategy-chips"></div>
                 </div>
             </header>
@@ -226,7 +252,7 @@
                 <form id="bet-form" onsubmit="handleBetSubmit(event)" class="space-y-10">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегии</label>
+                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегию</label>
                             <select id="f-strategy" required class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-lg focus:border-accent">
                                 <!-- JS -->
                             </select>
@@ -589,22 +615,29 @@
                 const sBets = bets.filter(b => b.strategyId === s.id);
                 let p = 0;
                 let activeStakes = 0;
+                let activeBetsCount = 0;
                 sBets.forEach(b => {
                     if (b.status === 'Win') p += (b.stake * b.odds) - b.stake;
                     else if (b.status === 'Loss') p -= b.stake;
-                    else if (b.status === 'Active') activeStakes += b.stake;
+                    else if (b.status === 'Active') {
+                        activeStakes += b.stake;
+                        activeBetsCount++;
+                    }
                 });
+                
                 // Math.round для избежания багов с плавающей точкой
                 const currentBank = Math.round(((parseFloat(s.bank) || 0) + p - activeStakes) * 100) / 100;
-                return { ...s, currentBank, sBetsLength: sBets.length, p };
+                
+                // ИЗМЕНЕНИЕ: Стратегия считается слитой ТОЛЬКО если банк 0 или ниже, И нет открытых ставок
+                const isLost = currentBank <= 0 && activeBetsCount === 0;
+                
+                return { ...s, currentBank, sBetsLength: sBets.length, p, activeBetsCount, isLost };
             });
 
-            // Сортировка: проигранные (<= 0) уходят в конец
+            // Сортировка: проигранные (<= 0 без активных ставок) уходят в конец
             stratsWithStats.sort((a, b) => {
-                const aLost = a.currentBank <= 0;
-                const bLost = b.currentBank <= 0;
-                if (aLost && !bLost) return 1;
-                if (!aLost && bLost) return -1;
+                if (a.isLost && !b.isLost) return 1;
+                if (!a.isLost && b.isLost) return -1;
                 return b.currentBank - a.currentBank; // Вторичная сортировка по размеру банка
             });
 
@@ -627,17 +660,27 @@
             let html = `<button onclick="setFilter('all')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}">ВСЕ СТРАТЕГИИ</button>`;
             
             strats.forEach(s => {
-                const isLost = s.currentBank <= 0;
+                let state = 'neutral';
+                if (s.isLost) state = 'lost'; // Только если реально слита (0 и нет активных ставок)
+                else if (s.currentBank <= s.bank * 0.1) state = 'danger'; // Осталось 10% или меньше (включая 0, если ставки еще играют)
+                else if (s.currentBank > s.bank) state = 'positive'; // Плюсовая стратегия
+
                 let btnClass = '';
                 
                 if (currentFilter === s.id) {
-                    btnClass = isLost ? 'bg-loss text-white shadow-lg' : 'bg-accent text-white shadow-lg';
+                    if (state === 'lost') btnClass = 'bg-loss text-white shadow-lg';
+                    else if (state === 'danger') btnClass = 'bg-yellow-500 text-white shadow-lg';
+                    else if (state === 'positive') btnClass = 'bg-win text-white shadow-lg';
+                    else btnClass = 'bg-accent text-white shadow-lg';
                 } else {
-                    btnClass = isLost ? 'bg-white text-loss border border-rose-200 hover:bg-rose-50' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50';
+                    if (state === 'lost') btnClass = 'bg-white text-loss border-rose-200 hover:bg-rose-50';
+                    else if (state === 'danger') btnClass = 'bg-white text-yellow-600 border-yellow-300 hover:bg-yellow-50';
+                    else if (state === 'positive') btnClass = 'bg-white text-win border-emerald-200 hover:bg-emerald-50';
+                    else btnClass = 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50';
                 }
                 
-                // Зачеркиваем название, если стратегия слита и не выбрана активно
-                const nameStyle = isLost && currentFilter !== s.id ? 'line-through opacity-80' : '';
+                // Зачеркиваем название, если стратегия окончательно слита
+                const nameStyle = (state === 'lost') && currentFilter !== s.id ? 'line-through opacity-80' : '';
 
                 html += `<button onclick="setFilter('${s.id}')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${btnClass}"><span class="${nameStyle}">${s.name}</span></button>`;
             });
@@ -667,8 +710,12 @@
                 }
             });
 
-            const activeStakes = filteredBets.filter(b => b.status === 'Active').reduce((acc, b) => acc + b.stake, 0);
+            const activeBetsArr = filteredBets.filter(b => b.status === 'Active');
+            const activeStakes = activeBetsArr.reduce((acc, b) => acc + b.stake, 0);
+            const activeBetsCount = activeBetsArr.length;
+            
             const currentBank = Math.round((initialBank + profit - activeStakes) * 100) / 100;
+            const isBankLost = currentBank <= 0 && activeBetsCount === 0; // Слита ли отображаемая статистика
 
             const wr = (wins + losses) > 0 ? (wins / (wins + losses) * 100).toFixed(1) : 0;
             const roi = totalStaked > 0 ? (profit / totalStaked * 100).toFixed(1) : 0;
@@ -677,7 +724,7 @@
             const statInitialEl = document.getElementById('stat-initial');
             if (statInitialEl) {
                 const cbSign = currentBank < 0 ? '-' : '';
-                statInitialEl.innerHTML = `${initialBank.toLocaleString()} <span class="text-slate-300 mx-1 font-normal">/</span> <span class="font-bold ${currentBank <= 0 ? 'text-loss' : 'text-accent'}">${cbSign}${Math.abs(currentBank).toLocaleString()} ₴</span>`;
+                statInitialEl.innerHTML = `${initialBank.toLocaleString()} <span class="text-slate-300 mx-1 font-normal">/</span> <span class="font-bold ${isBankLost ? 'text-loss' : 'text-accent'}">${cbSign}${Math.abs(currentBank).toLocaleString()} ₴</span>`;
             }
             
             const profitEl = document.getElementById('stat-profit');
@@ -694,18 +741,25 @@
             const totalInitial = strategies.reduce((acc, s) => acc + (parseFloat(s.bank) || 0), 0);
             let totalProfit = 0;
             let totalActiveStakes = 0;
+            let globalActiveBetsCount = 0;
+            
             bets.forEach(b => {
                 if(b.status === 'Win') totalProfit += (b.stake * b.odds) - b.stake;
                 else if(b.status === 'Loss') totalProfit -= b.stake;
-                else if(b.status === 'Active') totalActiveStakes += b.stake;
+                else if(b.status === 'Active') {
+                    totalActiveStakes += b.stake;
+                    globalActiveBetsCount++;
+                }
             });
             
             const globalBankVal = Math.round((totalInitial + totalProfit - totalActiveStakes) * 100) / 100;
+            const globalIsLost = globalBankVal <= 0 && globalActiveBetsCount === 0;
+            
             const globalBankEl = document.getElementById('global-bank');
             if (globalBankEl) {
                 const gSign = globalBankVal < 0 ? '-' : '';
                 globalBankEl.innerText = `${gSign}${Math.abs(globalBankVal).toLocaleString()} ₴`;
-                globalBankEl.className = `text-2xl font-mono font-bold ${globalBankVal <= 0 ? 'text-loss' : 'text-accent'}`;
+                globalBankEl.className = `text-3xl font-mono font-black ${globalBankVal < 0 ? 'text-loss' : 'text-slate-800'}`;
             }
 
             updateCharts(resolved, wins, losses, refunds, profit);
@@ -853,12 +907,26 @@
             const strats = getSortedStrategiesWithStats();
 
             body.innerHTML = strats.map(s => {
-                const isLost = s.currentBank <= 0;
-                const rowClass = isLost ? 'bg-rose-50/50 border-b border-rose-100' : 'hover:bg-slate-50/50 border-b border-slate-50';
-                const nameClass = isLost ? 'text-loss line-through opacity-70' : 'text-slate-800';
+                let state = 'neutral';
+                if (s.isLost) state = 'lost'; // Только если реально слита
+                else if (s.currentBank <= s.bank * 0.1) state = 'danger'; // Осталось 10% или меньше
+                else if (s.currentBank > s.bank) state = 'positive'; // Плюсовая стратегия
+
+                let rowClass = 'hover:bg-slate-50/50 border-b border-slate-50';
+                if (state === 'lost') rowClass = 'bg-rose-50/40 border-b border-rose-100';
+                else if (state === 'danger') rowClass = 'bg-yellow-50/50 border-b border-yellow-100 hover:bg-yellow-50/80';
+                else if (state === 'positive') rowClass = 'bg-emerald-50/30 border-b border-emerald-100 hover:bg-emerald-50/50';
+                
+                let nameClass = 'text-slate-800';
+                if (state === 'lost') nameClass = 'text-loss line-through opacity-70';
+                else if (state === 'danger') nameClass = 'text-yellow-600';
+                else if (state === 'positive') nameClass = 'text-win';
                 
                 const bankSign = s.currentBank < 0 ? '-' : '';
-                const bankColor = s.currentBank <= 0 ? 'text-loss' : (s.p > 0 ? 'text-win' : 'text-slate-800');
+                let bankColor = 'text-slate-800';
+                if (state === 'lost') bankColor = 'text-loss';
+                else if (state === 'danger') bankColor = 'text-yellow-600';
+                else if (state === 'positive') bankColor = 'text-win';
                 
                 return `
                     <tr class="${rowClass} transition-colors">
