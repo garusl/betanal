@@ -98,7 +98,7 @@
             
             <!-- ВЕРСИЯ ДЛЯ ПРОВЕРКИ КЭША -->
             <div class="mt-4 text-[9px] text-slate-600 font-bold tracking-widest uppercase">
-                v 3.1 Supabase + Smart Fallback
+                v 3.2 Auto-Sync Active
             </div>
         </div>
     </aside>
@@ -255,7 +255,7 @@
                 <form id="bet-form" onsubmit="handleBetSubmit(event)" class="space-y-10">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегии</label>
+                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегию</label>
                             <select id="f-strategy" required class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-lg focus:border-accent">
                                 <!-- JS -->
                             </select>
@@ -516,7 +516,7 @@
 
         async function initDataListeners() {
             if (!supabaseClient) {
-                // ЛОКАЛЬНЫЙ РЕЖИМ (Если ключи Supabase не вставлены)
+                // ЛОКАЛЬНЫЙ РЕЖИМ
                 document.getElementById('loading-text').innerText = "Локальный режим (без облака)";
                 setTimeout(() => document.getElementById('loading').style.display = 'none', 1000);
                 
@@ -537,7 +537,7 @@
                     strategies = data.strategies || [];
                     bets = data.bets || [];
                 } else if (localStorage.getItem('bt_admin_access') === '1111111') {
-                    // Если база пустая, но вы админ — инициализируем начальные данные
+                    // Инициализация при пустой базе
                     strategies = [{ id: 's1', name: 'ФЛЭТ 3%', bank: 10000 }];
                     bets = [];
                     await saveToCloud(); 
@@ -550,30 +550,70 @@
                 renderDashboard();
                 document.getElementById('loading').style.display = 'none';
 
+                // Подписка на WebSockets (может не работать, если в базе не включен Realtime)
                 if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
                 
                 realtimeChannel = supabaseClient.channel('public:app_state')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
                         if (payload.new) {
-                            strategies = payload.new.strategies || [];
-                            bets = payload.new.bets || [];
-                            renderDashboard();
-                            
-                            if (document.getElementById('tab-add-bet').classList.contains('active')) {
-                                const stratSelect = document.getElementById('f-strategy');
-                                if(stratSelect) {
-                                    const strats = getSortedStrategiesWithStats();
-                                    stratSelect.innerHTML = strats.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-                                }
-                            }
+                            applyRemoteData(payload.new.strategies, payload.new.bets);
                         }
                     })
                     .subscribe();
+
+                // ФОНОВАЯ АВТО-СИНХРОНИЗАЦИЯ (Polling каждые 5 секунд)
+                // Гарантирует обновление интерфейса, даже если WebSockets заблокированы
+                setInterval(syncFromCloud, 5000);
 
             } catch (err) {
                 console.error("Supabase sync error:", err);
                 showAlert("Ошибка подключения к Supabase. Проверьте правильность URL, KEY и наличие таблицы app_state.");
                 document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Функция для безопасного обновления данных из облака
+        function applyRemoteData(remoteStrategies, remoteBets) {
+            const remoteStratsStr = JSON.stringify(remoteStrategies || []);
+            const remoteBetsStr = JSON.stringify(remoteBets || []);
+            const localStratsStr = JSON.stringify(strategies);
+            const localBetsStr = JSON.stringify(bets);
+
+            // Обновляем UI только если данные реально изменились на другом устройстве
+            if (remoteStratsStr !== localStratsStr || remoteBetsStr !== localBetsStr) {
+                strategies = remoteStrategies || [];
+                bets = remoteBets || [];
+                renderDashboard();
+                
+                // Обновляем выпадающий список стратегий, сохраняя выбранное значение
+                if (document.getElementById('tab-add-bet').classList.contains('active')) {
+                    const stratSelect = document.getElementById('f-strategy');
+                    if(stratSelect) {
+                        const selectedValue = stratSelect.value;
+                        const strats = getSortedStrategiesWithStats();
+                        stratSelect.innerHTML = strats.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                        
+                        // Возвращаем фокус на ранее выбранную стратегию, если она не удалена
+                        if (strats.find(s => s.id === selectedValue)) {
+                            stratSelect.value = selectedValue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Фоновый запрос в базу данных
+        async function syncFromCloud() {
+            if (!supabaseClient) return;
+            try {
+                const { data, error } = await supabaseClient.from('app_state').select('*').eq('id', 1).single();
+                if (error) return;
+                
+                if (data) {
+                    applyRemoteData(data.strategies, data.bets);
+                }
+            } catch (err) {
+                // Игнорируем ошибки фоновой синхронизации, чтобы не мешать пользователю
             }
         }
 
@@ -637,7 +677,7 @@
                 // Math.round для избежания багов с плавающей точкой
                 const currentBank = Math.round(((parseFloat(s.bank) || 0) + p - activeStakes) * 100) / 100;
                 
-                // ИЗМЕНЕНИЕ: Стратегия считается слитой ТОЛЬКО если банк 0 или ниже, И нет открытых ставок
+                // Стратегия считается слитой ТОЛЬКО если банк 0 или ниже, И нет открытых ставок
                 const isLost = currentBank <= 0 && activeBetsCount === 0;
                 
                 return { ...s, currentBank, sBetsLength: sBets.length, p, activeBetsCount, isLost };
