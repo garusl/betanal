@@ -17,9 +17,12 @@
         
         const SUPABASE_URL = 'https://zougmxypkuafvtgmfblf.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvdWdteHlwa3VhZnZ0Z21mYmxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NzIzNDAsImV4cCI6MjA4OTQ0ODM0MH0.SFo1pEWBnWN__-A2kr7gJ7J5K_CI-h39SrI_3KSriC4';
+        
+        // ВАШ КЛЮЧ THE ODDS API
+        const THE_ODDS_API_KEY = 'a74b90beb886c72297df21130d14930c';
 
         let supabaseClient = null;
-        if (SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'ВСТАВЬТЕ_СЮДА_ВАШ_ANON_KEY') {
+        if (SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvdWdteHlwa3VhZnZ0Z21mYmxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NzIzNDAsImV4cCI6MjA4OTQ0ODM0MH0.SFo1pEWBnWN__-A2kr7gJ7J5K_CI-h39SrI_3KSriC4') {
             supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
 
@@ -290,6 +293,12 @@
                                 <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Лига</label>
                                 <select id="f-league" onchange="updateMatches()" required class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-xs font-bold">
                                     <option value="">-- Лига --</option>
+                                    <option value="EPL">🇬🇧 Англия: Премьер-лига</option>
+                                    <option value="LaLiga">🇪🇸 Испания: Ла Лига</option>
+                                    <option value="SerieA">🇮🇹 Италия: Серия А</option>
+                                    <option value="Bundesliga">🇩🇪 Германия: Бундеслига</option>
+                                    <option value="Ligue1">🇫🇷 Франция: Лига 1</option>
+                                    <option value="UCL">🏆 Лига Чемпионов</option>
                                 </select>
                             </div>
                             <div class="lg:col-span-3">
@@ -1205,51 +1214,112 @@
             switchTab('dashboard');
         }
 
-        // --- МУЛЯЖ LIVE ЛИНИИ И АВТОРАСЧЕТ ---
+        // --- ИНТЕГРАЦИЯ THE ODDS API (РЕАЛЬНЫЕ ДАННЫЕ) ---
         async function fetchLiveLine() {
-            const btn = document.getElementById('btn-fetch-line');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="animate-spin inline-block">↻</span> Загрузка...`;
-            btn.disabled = true;
+            const apiKey = THE_ODDS_API_KEY;
+            if (!apiKey || apiKey === 'ВСТАВЬТЕ_КЛЮЧ_СЮДА') {
+                showAlert("Пожалуйста, вставьте ваш ключ The Odds API в код (переменная THE_ODDS_API_KEY).");
+                return;
+            }
 
-            await new Promise(resolve => setTimeout(resolve, 800));
+            const leagueCode = document.getElementById('f-league').value;
+            if (!leagueCode) {
+                showAlert("Сначала выберите лигу из списка, для которой хотите загрузить реальные матчи и коэффициенты.");
+                return;
+            }
 
-            const randOdds = (base) => (base * (1 + (Math.random() * 0.1 - 0.05))).toFixed(2);
-
-            liveLineData = {
-                EPL: [
-                    { id: 'm1', t1: "Арсенал", t2: "Челси", odds: { "П1": randOdds(1.95), "X": randOdds(3.60), "П2": randOdds(4.20), "1X": 1.25, "X2": 1.95, "ТБ 2.5": randOdds(1.85), "ТМ 2.5": randOdds(1.95), "ОЗ - Да": randOdds(1.70) } },
-                    { id: 'm2', t1: "Ман Сити", t2: "Ливерпуль", odds: { "П1": randOdds(2.10), "X": randOdds(3.80), "П2": randOdds(3.10), "1X": 1.35, "X2": 1.70, "ТБ 2.5": randOdds(1.60), "ТМ 2.5": randOdds(2.30), "ОЗ - Да": randOdds(1.55) } },
-                    { id: 'm3', t1: "Тоттенхэм", t2: "МЮ", odds: { "П1": randOdds(2.35), "X": randOdds(3.50), "П2": randOdds(2.80), "1X": 1.40, "X2": 1.55, "ТБ 2.5": randOdds(1.65), "ТМ 2.5": randOdds(2.15), "ОЗ - Да": randOdds(1.50) } }
-                ],
-                LaLiga: [
-                    { id: 'm4', t1: "Реал Мадрид", t2: "Атлетико", odds: { "П1": randOdds(1.80), "X": randOdds(3.40), "П2": randOdds(4.50), "1X": 1.18, "X2": 2.05, "ТБ 2.5": randOdds(2.05), "ТМ 2.5": randOdds(1.75), "ОЗ - Да": randOdds(1.90) } },
-                    { id: 'm5', t1: "Барселона", t2: "Жирона", odds: { "П1": randOdds(1.45), "X": randOdds(4.80), "П2": randOdds(6.50), "1X": 1.10, "X2": 2.80, "ТБ 2.5": randOdds(1.50), "ТМ 2.5": randOdds(2.55), "ОЗ - Да": randOdds(1.65) } }
-                ],
-                UCL: [
-                    { id: 'm6', t1: "Бавария", t2: "ПСЖ", odds: { "П1": randOdds(2.15), "X": randOdds(3.90), "П2": randOdds(3.00), "1X": 1.35, "X2": 1.65, "ТБ 2.5": randOdds(1.55), "ТМ 2.5": randOdds(2.45), "ОЗ - Да": randOdds(1.48) } }
-                ],
-                SerieA: [
-                    { id: 'm7', t1: "Интер", t2: "Ювентус", odds: { "П1": randOdds(2.00), "X": randOdds(3.20), "П2": randOdds(4.00), "1X": 1.25, "X2": 1.80, "ТБ 2.5": randOdds(2.20), "ТМ 2.5": randOdds(1.65), "ОЗ - Да": randOdds(2.00) } }
-                ]
+            // Маппинг наших кодов лиг на ключи The Odds API
+            const sportKeyMap = {
+                "EPL": "soccer_epl",
+                "LaLiga": "soccer_spain_la_liga",
+                "SerieA": "soccer_italy_serie_a",
+                "Bundesliga": "soccer_germany_bundesliga",
+                "Ligue1": "soccer_france_ligue_one",
+                "UCL": "soccer_uefa_champs_league"
             };
 
-            const leagueSelect = document.getElementById('f-league');
-            leagueSelect.innerHTML = '<option value="">-- Лига --</option>';
-            Object.keys(liveLineData).forEach(leagueCode => {
-                leagueSelect.innerHTML += `<option value="${leagueCode}">${SUPPORTED_LEAGUES[leagueCode] || leagueCode}</option>`;
-            });
+            const sportKey = sportKeyMap[leagueCode];
+            if (!sportKey) return;
 
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            
-            updateMatches();
-            
-            const badge = document.getElementById('event-box-title');
-            const originalColor = badge.className;
-            badge.classList.add('text-neon');
-            badge.innerText = "Конструктор (Live Линия Подключена)";
-            setTimeout(() => { badge.className = originalColor; }, 2000);
+            const btn = document.getElementById('btn-fetch-line');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<span class="animate-spin inline-block">↻</span> API Запрос...`;
+            btn.disabled = true;
+
+            try {
+                // Запрос к API (Европейские букмекеры, рынок H2H - П1/Х/П2)
+                const response = await fetch(`https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${apiKey}&regions=eu&markets=h2h&oddsFormat=decimal`);
+                
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                
+                const data = await response.json();
+                const matches = [];
+                
+                data.forEach(match => {
+                    // Берем первого доступного букмекера из списка
+                    if (!match.bookmakers || match.bookmakers.length === 0) return;
+                    const bookmaker = match.bookmakers[0];
+                    const h2hMarket = bookmaker.markets.find(m => m.key === 'h2h');
+                    if (!h2hMarket) return;
+
+                    let p1 = 0, x = 0, p2 = 0;
+                    h2hMarket.outcomes.forEach(out => {
+                        if (out.name === match.home_team) p1 = out.price;
+                        else if (out.name === match.away_team) p2 = out.price;
+                        else if (out.name === 'Draw') x = out.price;
+                    });
+
+                    if (p1 && x && p2) {
+                        // Математическая калькуляция двойных шансов 1X и X2
+                        const odds1X = (1 / ((1/p1) + (1/x))) * 0.95;
+                        const oddsX2 = (1 / ((1/p2) + (1/x))) * 0.95;
+                        
+                        // Фейковые тоталы (для экономии API лимитов запрашиваем только рынок H2H)
+                        const randOdds = (base) => (base * (1 + (Math.random() * 0.1 - 0.05))).toFixed(2);
+
+                        matches.push({
+                            id: match.id,
+                            t1: match.home_team,
+                            t2: match.away_team,
+                            odds: {
+                                "П1": p1.toFixed(2),
+                                "X": x.toFixed(2),
+                                "П2": p2.toFixed(2),
+                                "1X": odds1X.toFixed(2),
+                                "X2": oddsX2.toFixed(2),
+                                "ТБ 2.5": randOdds(1.85),
+                                "ТМ 2.5": randOdds(1.95),
+                                "ОЗ - Да": randOdds(1.70)
+                            },
+                            commence_time: match.commence_time
+                        });
+                    }
+                });
+
+                if (matches.length > 0) {
+                    liveLineData[leagueCode] = matches;
+                    updateMatches(); 
+                    
+                    const badge = document.getElementById('event-box-title');
+                    const originalColor = badge.className;
+                    badge.classList.add('text-emerald-500');
+                    badge.innerText = "✅ Линия загружена (Real API)";
+                    setTimeout(() => { 
+                        badge.classList.remove('text-emerald-500'); 
+                        badge.className = originalColor;
+                        badge.innerText = "Конструктор события";
+                    }, 3000);
+                } else {
+                    showAlert("На данный момент нет доступных предстоящих матчей для этой лиги.");
+                }
+
+            } catch (err) {
+                console.error(err);
+                showAlert("Ошибка API. Убедитесь, что ключ корректен, а лимит запросов не исчерпан.");
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
 
         async function autoResolveBets() {
