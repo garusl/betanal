@@ -3,66 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BetTracker Pro Cloud - Единая Панель</title>
+    <title>BetTracker Pro Cloud - Единая Панель (Supabase)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-        // НАСТРОЙКА ДЛЯ GITHUB: Вставьте сюда ваши ключи вместо null
-        const manualConfig = null; 
+    <script>
+        // ==========================================
+        // 🛠 НАСТРОЙКА SUPABASE
+        // ==========================================
+        
+        const SUPABASE_URL = 'https://zougmxypkuafvtgmfblf.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvdWdteHlwa3VhZnZ0Z21mYmxmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NzIzNDAsImV4cCI6MjA4OTQ0ODM0MH0.SFo1pEWBnWN__-A2kr7gJ7J5K_CI-h39SrI_3KSriC4';
 
-        let firebaseConfig = null;
-        try {
-            firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : manualConfig;
-        } catch (e) {
-            firebaseConfig = manualConfig;
-        }
-
-        if (firebaseConfig && firebaseConfig.apiKey) {
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            const db = getFirestore(app);
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'bet-tracker-pro-public';
-
-            window.fb = { 
-                db, auth, appId, 
-                collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, addDoc,
-                signInAnonymously, signInWithCustomToken, onAuthStateChanged
-            };
-        } else {
-            console.error("Firebase Config missing!");
+        let supabaseClient = null;
+        if (SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'ВСТАВЬТЕ_СЮДА_ВАШ_ANON_KEY') {
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         }
 
         window.addEventListener('load', () => {
             updateAdminUI();
-            if (window.fb) initAuth();
-            else document.getElementById('loading').style.display = 'none';
+            initDataListeners();
         });
-
-        async function initAuth() {
-            const { auth, signInAnonymously, signInWithCustomToken } = window.fb;
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth); // Для всех посетителей с GitHub
-                }
-            } catch (err) {
-                console.error("Auth error:", err);
-            }
-
-            window.fb.onAuthStateChanged(auth, user => {
-                if (user) {
-                    document.getElementById('loading').style.display = 'none';
-                    initDataListeners();
-                }
-            });
-        }
     </script>
 
     <script>
@@ -100,7 +64,7 @@
 
     <div id="loading" class="loading-overlay">
         <div class="animate-spin text-4xl text-white">⚽</div>
-        <p class="font-bold tracking-widest uppercase text-xs text-white">Подключение к базе данных...</p>
+        <p class="font-bold tracking-widest uppercase text-xs text-white" id="loading-text">Подключение к базе данных...</p>
     </div>
 
     <!-- Sidebar -->
@@ -109,7 +73,7 @@
             <h1 class="text-2xl font-bold tracking-tight flex items-center gap-3">
                 <span class="text-3xl">📊</span> BetTracker
             </h1>
-            <p class="text-slate-400 text-[10px] mt-2 uppercase tracking-widest font-black">Cloud Edition</p>
+            <p class="text-slate-400 text-[10px] mt-2 uppercase tracking-widest font-black">Supabase Edition</p>
         </div>
         <nav class="flex-1 px-4 space-y-2">
             <button onclick="switchTab('dashboard')" id="nav-dashboard" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-accent text-white font-bold shadow-lg">
@@ -121,8 +85,8 @@
         </nav>
         <div class="p-6 border-t border-slate-800 flex flex-col items-center">
             <p class="text-[9px] text-slate-500 uppercase font-bold mb-2">Статус синхронизации</p>
-            <div id="sync-status" class="flex items-center gap-2 text-[10px] text-emerald-400 font-bold">
-                <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span> ONLINE
+            <div id="sync-status" class="flex items-center gap-2 text-[10px] text-slate-400 font-bold">
+                <span class="w-2 h-2 bg-slate-400 rounded-full" id="sync-dot"></span> <span id="sync-text">ОФФЛАЙН</span>
             </div>
             <!-- ADMIN TOGGLE -->
             <div id="admin-status-text" onclick="toggleAdmin()" class="text-[10px] text-slate-500 font-bold mt-4 cursor-pointer hover:text-white transition-colors bg-slate-800/50 px-4 py-2 rounded-lg w-full text-center">
@@ -283,7 +247,6 @@
                             <h4 class="font-black text-slate-700 uppercase text-xs tracking-widest" id="event-box-title">Конструктор события</h4>
                             
                             <div class="flex items-center gap-3">
-                                <!-- Кнопка обновления линии -->
                                 <button type="button" id="btn-fetch-line" onclick="fetchLiveLine()" class="text-[10px] font-bold bg-white hover:bg-slate-200 text-primary px-4 py-2 rounded-xl transition-colors flex items-center gap-2 border border-slate-200 shadow-sm">
                                     <span class="text-sm">🔄</span> Загрузить Live линию
                                 </button>
@@ -319,7 +282,6 @@
                             </div>
                             <div class="lg:col-span-1">
                                 <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Коэфф</label>
-                                <!-- Auto-populated odds input -->
                                 <input type="number" step="0.01" id="f-odds" required class="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-[10px] font-mono font-bold text-center" placeholder="1.00">
                             </div>
                         </div>
@@ -332,8 +294,6 @@
                         <!-- Draft Container -->
                         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mt-6">
                             <div id="draft-list" class="space-y-2 max-h-[150px] overflow-y-auto pr-2 custom-scroll"></div>
-                            
-                            <!-- Express Badge moved to the bottom -->
                             <div id="express-odds-badge-bottom" class="hidden mt-4 pt-4 border-t border-slate-50 flex justify-between items-center">
                                 <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Итоговый коэффициент:</span>
                                 <span class="bg-accent text-white px-4 py-1.5 rounded-full font-mono text-sm font-bold shadow-md">@ <span id="total-express-odds-bottom">1.00</span></span>
@@ -354,7 +314,7 @@
         </div>
     </main>
 
-    <!-- CUSTOM MODALS (Обход ограничений браузера) -->
+    <!-- CUSTOM MODALS -->
     
     <!-- Password Modal -->
     <div id="password-modal" class="custom-modal">
@@ -424,10 +384,7 @@
         let currentFilter = 'all';
         let mainChart = null, doughnutChart = null;
 
-        // Эмулятор базы Live-линии (вместо реального API пока нет ключа)
         let liveLineData = {};
-
-        // Список поддерживаемых лиг для эмулятора
         const SUPPORTED_LEAGUES = {
             "EPL": "🇬🇧 Англия: Премьер-лига",
             "LaLiga": "🇪🇸 Испания: Ла Лига",
@@ -514,43 +471,85 @@
             }
         }
 
-        // --- PUBLIC FIREBASE SYNC ---
-        let syncUnsubscribe = null;
+        // --- SUPABASE SYNC LOGIC ---
+        let realtimeChannel = null;
 
-        function initDataListeners() {
-            const { db, appId, doc, onSnapshot } = window.fb;
-            
-            if (syncUnsubscribe) syncUnsubscribe();
+        async function initDataListeners() {
+            if (!supabaseClient) {
+                // ЛОКАЛЬНЫЙ РЕЖИМ (Если ключи Supabase не вставлены)
+                document.getElementById('loading-text').innerText = "Локальный режим (без облака)";
+                setTimeout(() => document.getElementById('loading').style.display = 'none', 1000);
+                
+                strategies = JSON.parse(localStorage.getItem('bt_local_strats')) || [{ id: 's1', name: 'ФЛЭТ 3%', bank: 10000 }];
+                bets = JSON.parse(localStorage.getItem('bt_local_bets')) || [];
+                renderDashboard();
+                return;
+            }
 
-            const stateRef = doc(db, 'artifacts', appId, 'public', 'data', 'platform', 'state');
-            syncUnsubscribe = onSnapshot(stateRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
+            try {
+                // Первичная загрузка данных из таблицы app_state (id=1)
+                const { data, error } = await supabaseClient.from('app_state').select('*').eq('id', 1).single();
+                
+                if (error && error.code !== 'PGRST116') {
+                    throw error;
+                }
+
+                if (data) {
                     strategies = data.strategies || [];
                     bets = data.bets || [];
                 } else if (localStorage.getItem('bt_admin_access') === '1111111') {
-                    // Init empty DB if admin
+                    // Если база пустая, но вы админ — инициализируем начальные данные
                     strategies = [{ id: 's1', name: 'ФЛЭТ 3%', bank: 10000 }];
                     bets = [];
-                    saveToCloud(); 
+                    await saveToCloud(); 
                 }
+
+                document.getElementById('sync-dot').className = 'w-2 h-2 bg-emerald-400 rounded-full animate-pulse';
+                document.getElementById('sync-text').className = 'text-emerald-400';
+                document.getElementById('sync-text').innerText = 'ONLINE (SUPABASE)';
+                
                 renderDashboard();
-                if (document.getElementById('tab-add-bet').classList.contains('active')) {
-                    initAddBetForm();
-                }
-            }, (err) => console.error("Sync error:", err));
+                document.getElementById('loading').style.display = 'none';
+
+                // Подписка на обновления в реальном времени (WebSockets)
+                if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+                
+                realtimeChannel = supabaseClient.channel('public:app_state')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state' }, payload => {
+                        if (payload.new) {
+                            strategies = payload.new.strategies || [];
+                            bets = payload.new.bets || [];
+                            renderDashboard();
+                            
+                            // Обновляем список стратегий в форме добавления ставки, если открыта эта вкладка
+                            if (document.getElementById('tab-add-bet').classList.contains('active')) {
+                                const stratSelect = document.getElementById('f-strategy');
+                                if(stratSelect) stratSelect.innerHTML = strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                            }
+                        }
+                    })
+                    .subscribe();
+
+            } catch (err) {
+                console.error("Supabase sync error:", err);
+                showAlert("Ошибка подключения к Supabase. Проверьте правильность URL, KEY и наличие таблицы app_state.");
+                document.getElementById('loading').style.display = 'none';
+            }
         }
 
         async function saveToCloud() {
             if (localStorage.getItem('bt_admin_access') !== '1111111') return;
             
-            if (window.fb && window.fb.db && window.fb.auth.currentUser) {
-                const { db, appId, doc, setDoc } = window.fb;
-                const stateRef = doc(db, 'artifacts', appId, 'public', 'data', 'platform', 'state');
+            if (supabaseClient) {
                 try {
-                    await setDoc(stateRef, { strategies, bets }, { merge: true });
+                    // Перезаписываем единый документ с состоянием приложения
+                    const { error } = await supabaseClient
+                        .from('app_state')
+                        .upsert({ id: 1, strategies: strategies, bets: bets });
+                        
+                    if (error) throw error;
                 } catch(e) {
-                    console.error("Ошибка сохранения:", e);
+                    console.error("Ошибка сохранения в Supabase:", e);
                     showAlert("Произошла ошибка при сохранении данных в облако.");
                 }
             } else {
@@ -644,7 +643,7 @@
             const statRoiEl = document.getElementById('stat-roi');
             if (statRoiEl) statRoiEl.innerText = roi + '%';
 
-            // Global Bank (Regardless of filter)
+            // Global Bank
             const totalInitial = strategies.reduce((acc, s) => acc + (parseFloat(s.bank) || 0), 0);
             let totalProfit = 0;
             let totalActiveStakes = 0;
@@ -729,7 +728,6 @@
             const body = document.getElementById('bets-table-body');
             if (!body) return;
             
-            // Filter by selected strategy before rendering history
             const filteredBets = currentFilter === 'all' ? bets : bets.filter(b => b.strategyId === currentFilter);
             const sorted = [...filteredBets].sort((a,b) => b.timestamp - a.timestamp); 
             
@@ -869,68 +867,13 @@
             });
         }
 
-        // --- MOCK LIVE DATA FETCHER ---
-        async function fetchLiveLine() {
-            const btn = document.getElementById('btn-fetch-line');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="animate-spin inline-block">↻</span> Загрузка...`;
-            btn.disabled = true;
-
-            // Имитация задержки сети
-            await new Promise(resolve => setTimeout(resolve, 800));
-
-            // Генератор случайных отклонений кэфов (±5%)
-            const randOdds = (base) => (base * (1 + (Math.random() * 0.1 - 0.05))).toFixed(2);
-
-            // Имитация ответа от API букмекера/Flashscore на сегодня
-            liveLineData = {
-                EPL: [
-                    { id: 'm1', t1: "Арсенал", t2: "Челси", odds: { "П1": randOdds(1.95), "X": randOdds(3.60), "П2": randOdds(4.20), "1X": 1.25, "X2": 1.95, "ТБ 2.5": randOdds(1.85), "ТМ 2.5": randOdds(1.95), "ОЗ - Да": randOdds(1.70) } },
-                    { id: 'm2', t1: "Ман Сити", t2: "Ливерпуль", odds: { "П1": randOdds(2.10), "X": randOdds(3.80), "П2": randOdds(3.10), "1X": 1.35, "X2": 1.70, "ТБ 2.5": randOdds(1.60), "ТМ 2.5": randOdds(2.30), "ОЗ - Да": randOdds(1.55) } },
-                    { id: 'm3', t1: "Тоттенхэм", t2: "МЮ", odds: { "П1": randOdds(2.35), "X": randOdds(3.50), "П2": randOdds(2.80), "1X": 1.40, "X2": 1.55, "ТБ 2.5": randOdds(1.65), "ТМ 2.5": randOdds(2.15), "ОЗ - Да": randOdds(1.50) } }
-                ],
-                LaLiga: [
-                    { id: 'm4', t1: "Реал Мадрид", t2: "Атлетико", odds: { "П1": randOdds(1.80), "X": randOdds(3.40), "П2": randOdds(4.50), "1X": 1.18, "X2": 2.05, "ТБ 2.5": randOdds(2.05), "ТМ 2.5": randOdds(1.75), "ОЗ - Да": randOdds(1.90) } },
-                    { id: 'm5', t1: "Барселона", t2: "Жирона", odds: { "П1": randOdds(1.45), "X": randOdds(4.80), "П2": randOdds(6.50), "1X": 1.10, "X2": 2.80, "ТБ 2.5": randOdds(1.50), "ТМ 2.5": randOdds(2.55), "ОЗ - Да": randOdds(1.65) } }
-                ],
-                UCL: [
-                    { id: 'm6', t1: "Бавария", t2: "ПСЖ", odds: { "П1": randOdds(2.15), "X": randOdds(3.90), "П2": randOdds(3.00), "1X": 1.35, "X2": 1.65, "ТБ 2.5": randOdds(1.55), "ТМ 2.5": randOdds(2.45), "ОЗ - Да": randOdds(1.48) } }
-                ],
-                SerieA: [
-                    { id: 'm7', t1: "Интер", t2: "Ювентус", odds: { "П1": randOdds(2.00), "X": randOdds(3.20), "П2": randOdds(4.00), "1X": 1.25, "X2": 1.80, "ТБ 2.5": randOdds(2.20), "ТМ 2.5": randOdds(1.65), "ОЗ - Да": randOdds(2.00) } }
-                ]
-            };
-
-            // Заполняем лиги на основе пришедших данных
-            const leagueSelect = document.getElementById('f-league');
-            leagueSelect.innerHTML = '<option value="">-- Лига --</option>';
-            Object.keys(liveLineData).forEach(leagueCode => {
-                leagueSelect.innerHTML += `<option value="${leagueCode}">${SUPPORTED_LEAGUES[leagueCode] || leagueCode}</option>`;
-            });
-
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            
-            updateMatches();
-            
-            // Небольшая визуальная подсказка
-            const badge = document.getElementById('event-box-title');
-            const originalColor = badge.className;
-            badge.classList.add('text-neon');
-            badge.innerText = "Конструктор (Live Линия Подключена)";
-            setTimeout(() => { badge.className = originalColor; }, 2000);
-        }
-
         // --- ADD BET LOGIC ---
         function initAddBetForm() {
             const stratSelect = document.getElementById('f-strategy');
             if(stratSelect) stratSelect.innerHTML = strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
             
-            // Если данные уже загружены, просто обновляем селекты
-            if (Object.keys(liveLineData).length === 0) {
-                // Если нет - делаем авто-загрузку при открытии вкладки
-                fetchLiveLine();
-            } else {
+            // Если данные Live линии уже загружены, обновляем матчи
+            if (Object.keys(liveLineData).length > 0) {
                 updateMatches();
             }
 
@@ -974,7 +917,7 @@
             const options = liveLineData[league].map(m => `<option value="${m.id}">${m.t1} - ${m.t2}</option>`).join('');
             matchSelect.innerHTML = options;
             
-            updateOdds(); // Обновляем кэф для выбранного первого матча
+            updateOdds(); 
         }
 
         function updateOdds() {
@@ -992,7 +935,6 @@
             if (match && match.odds[forecast]) {
                 oddsInput.value = match.odds[forecast];
             } else {
-                // Если котировки на этот рынок нет (fallback)
                 oddsInput.value = (Math.random() * 2 + 1.2).toFixed(2);
             }
         }
@@ -1005,7 +947,6 @@
 
             if (!league || !matchSelect.value || isNaN(odds)) return;
 
-            // Достаем имена команд из текста выбранного option
             const matchText = matchSelect.options[matchSelect.selectedIndex].text;
             const [t1, t2] = matchText.split(' - ');
 
@@ -1112,7 +1053,53 @@
             switchTab('dashboard');
         }
 
-        // --- LIVE AUTO-RESOLVE (MOCK) ---
+        // --- LIVE AUTO-RESOLVE & FETCH MOCK ---
+        async function fetchLiveLine() {
+            const btn = document.getElementById('btn-fetch-line');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<span class="animate-spin inline-block">↻</span> Загрузка...`;
+            btn.disabled = true;
+
+            await new Promise(resolve => setTimeout(resolve, 800));
+
+            const randOdds = (base) => (base * (1 + (Math.random() * 0.1 - 0.05))).toFixed(2);
+
+            liveLineData = {
+                EPL: [
+                    { id: 'm1', t1: "Арсенал", t2: "Челси", odds: { "П1": randOdds(1.95), "X": randOdds(3.60), "П2": randOdds(4.20), "1X": 1.25, "X2": 1.95, "ТБ 2.5": randOdds(1.85), "ТМ 2.5": randOdds(1.95), "ОЗ - Да": randOdds(1.70) } },
+                    { id: 'm2', t1: "Ман Сити", t2: "Ливерпуль", odds: { "П1": randOdds(2.10), "X": randOdds(3.80), "П2": randOdds(3.10), "1X": 1.35, "X2": 1.70, "ТБ 2.5": randOdds(1.60), "ТМ 2.5": randOdds(2.30), "ОЗ - Да": randOdds(1.55) } },
+                    { id: 'm3', t1: "Тоттенхэм", t2: "МЮ", odds: { "П1": randOdds(2.35), "X": randOdds(3.50), "П2": randOdds(2.80), "1X": 1.40, "X2": 1.55, "ТБ 2.5": randOdds(1.65), "ТМ 2.5": randOdds(2.15), "ОЗ - Да": randOdds(1.50) } }
+                ],
+                LaLiga: [
+                    { id: 'm4', t1: "Реал Мадрид", t2: "Атлетико", odds: { "П1": randOdds(1.80), "X": randOdds(3.40), "П2": randOdds(4.50), "1X": 1.18, "X2": 2.05, "ТБ 2.5": randOdds(2.05), "ТМ 2.5": randOdds(1.75), "ОЗ - Да": randOdds(1.90) } },
+                    { id: 'm5', t1: "Барселона", t2: "Жирона", odds: { "П1": randOdds(1.45), "X": randOdds(4.80), "П2": randOdds(6.50), "1X": 1.10, "X2": 2.80, "ТБ 2.5": randOdds(1.50), "ТМ 2.5": randOdds(2.55), "ОЗ - Да": randOdds(1.65) } }
+                ],
+                UCL: [
+                    { id: 'm6', t1: "Бавария", t2: "ПСЖ", odds: { "П1": randOdds(2.15), "X": randOdds(3.90), "П2": randOdds(3.00), "1X": 1.35, "X2": 1.65, "ТБ 2.5": randOdds(1.55), "ТМ 2.5": randOdds(2.45), "ОЗ - Да": randOdds(1.48) } }
+                ],
+                SerieA: [
+                    { id: 'm7', t1: "Интер", t2: "Ювентус", odds: { "П1": randOdds(2.00), "X": randOdds(3.20), "П2": randOdds(4.00), "1X": 1.25, "X2": 1.80, "ТБ 2.5": randOdds(2.20), "ТМ 2.5": randOdds(1.65), "ОЗ - Да": randOdds(2.00) } }
+                ]
+            };
+
+            const leagueSelect = document.getElementById('f-league');
+            leagueSelect.innerHTML = '<option value="">-- Лига --</option>';
+            Object.keys(liveLineData).forEach(leagueCode => {
+                leagueSelect.innerHTML += `<option value="${leagueCode}">${SUPPORTED_LEAGUES[leagueCode] || leagueCode}</option>`;
+            });
+
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            
+            updateMatches();
+            
+            const badge = document.getElementById('event-box-title');
+            const originalColor = badge.className;
+            badge.classList.add('text-neon');
+            badge.innerText = "Конструктор (Live Линия Подключена)";
+            setTimeout(() => { badge.className = originalColor; }, 2000);
+        }
+
         async function autoResolveBets() {
             if (!checkAdmin()) return;
             
@@ -1127,7 +1114,6 @@
             btn.innerHTML = `<span class="animate-spin inline-block text-sm">↻</span> Сверка с Flashscore...`;
             btn.disabled = true;
 
-            // Имитация задержки сети и проверки результатов
             await new Promise(resolve => setTimeout(resolve, 1500));
 
             let resolvedCount = 0;
@@ -1136,7 +1122,6 @@
 
             bets.forEach(b => {
                 if (b.status === 'Active') {
-                    // Имитируем, что 60% матчей из списка уже закончились
                     if (Math.random() > 0.4) {
                         resolvedCount++;
                         const rand = Math.random();
@@ -1144,7 +1129,6 @@
                         if (rand > 0.5) { newStatus = 'Win'; winCount++; }
                         else if (rand > 0.9) { newStatus = 'Refund'; }
                         else { lossCount++; }
-                        
                         b.status = newStatus;
                     }
                 }
@@ -1154,7 +1138,7 @@
             btn.disabled = false;
 
             if (resolvedCount > 0) {
-                saveToCloud(); // Автоматически обновит интерфейс и сохранит в базу
+                saveToCloud(); 
                 showAlert(`Авто-расчет завершен! Рассчитано событий: ${resolvedCount}. Побед: ${winCount}, Поражений: ${lossCount}.`);
             } else {
                 showAlert("Матчи еще идут. Ни одно из активных событий пока не завершилось.");
