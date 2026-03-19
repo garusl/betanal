@@ -772,6 +772,7 @@
             if(idx > -1) {
                 bets[idx].status = status;
                 saveToCloud();
+                renderDashboard();
             }
         }
 
@@ -781,6 +782,7 @@
             if(idx > -1) {
                 bets[idx].status = 'Active';
                 saveToCloud();
+                renderDashboard();
             }
         }
 
@@ -856,6 +858,7 @@
             }
             saveToCloud();
             closeStrategyModal();
+            renderDashboard();
         }
 
         function confirmDeleteStrategy(id) {
@@ -864,6 +867,7 @@
                 strategies = strategies.filter(s => s.id !== id);
                 bets = bets.filter(b => b.strategyId !== id);
                 saveToCloud();
+                renderDashboard();
             });
         }
 
@@ -1139,6 +1143,7 @@
 
             if (resolvedCount > 0) {
                 saveToCloud(); 
+                renderDashboard();
                 showAlert(`Авто-расчет завершен! Рассчитано событий: ${resolvedCount}. Побед: ${winCount}, Поражений: ${lossCount}.`);
             } else {
                 showAlert("Матчи еще идут. Ни одно из активных событий пока не завершилось.");
