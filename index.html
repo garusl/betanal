@@ -54,7 +54,6 @@
         .custom-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
         .custom-modal.active { display: flex; }
         .loading-overlay { position: fixed; inset: 0; background: #0f172a; z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; flex-direction: column; gap: 1rem; }
-        /* Custom scrollbar for draft list */
         .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: #f8fafc; border-radius: 8px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
@@ -88,15 +87,21 @@
             <div id="sync-status" class="flex items-center gap-2 text-[10px] text-slate-400 font-bold">
                 <span class="w-2 h-2 bg-slate-400 rounded-full" id="sync-dot"></span> <span id="sync-text">ОФФЛАЙН</span>
             </div>
+            
             <!-- ADMIN TOGGLE -->
             <div id="admin-status-text" onclick="toggleAdmin()" class="text-[10px] text-slate-500 font-bold mt-4 cursor-pointer hover:text-white transition-colors bg-slate-800/50 px-4 py-2 rounded-lg w-full text-center">
                 👁️ ТОЛЬКО ЧТЕНИЕ
+            </div>
+            
+            <!-- ВЕРСИЯ ДЛЯ ПРОВЕРКИ КЭША -->
+            <div class="mt-4 text-[9px] text-slate-600 font-bold tracking-widest uppercase">
+                v 3.0 Supabase Edition
             </div>
         </div>
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 h-screen">
+    <main class="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 h-screen relative">
         
         <!-- DASHBOARD TAB -->
         <div id="tab-dashboard" class="tab-content active space-y-10 pb-20">
@@ -221,7 +226,7 @@
                 <form id="bet-form" onsubmit="handleBetSubmit(event)" class="space-y-10">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
-                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегию</label>
+                            <label class="block text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Выберите стратегии</label>
                             <select id="f-strategy" required class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold text-lg focus:border-accent">
                                 <!-- JS -->
                             </select>
@@ -356,8 +361,8 @@
                 </div>
                 <input type="hidden" id="m-strat-id">
                 <div class="flex gap-4 pt-8">
-                    <button onclick="closeStrategyModal()" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">Отмена</button>
-                    <button onclick="saveStrategy()" class="flex-1 py-4 bg-accent text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Сохранить</button>
+                    <button onclick="closeStrategyModal()" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Отмена</button>
+                    <button onclick="saveStrategy()" class="flex-1 py-4 bg-accent text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl transition-all">Сохранить</button>
                 </div>
             </div>
         </div>
@@ -370,14 +375,14 @@
             <h3 class="text-xl font-black uppercase italic mb-4">Требуется подтверждение</h3>
             <p id="confirm-text" class="text-slate-500 mb-10 text-sm font-medium"></p>
             <div class="flex gap-4">
-                <button onclick="closeConfirmModal()" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">Назад</button>
-                <button id="confirm-btn" class="flex-1 py-4 bg-loss text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl">Подтвердить</button>
+                <button onclick="closeConfirmModal()" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Назад</button>
+                <button id="confirm-btn" class="flex-1 py-4 bg-loss text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl transition-all">Подтвердить</button>
             </div>
         </div>
     </div>
 
     <script>
-        // --- STATE AND DATA ---
+        // --- СТАТУСЫ И ДАННЫЕ ---
         let strategies = [];
         let bets = [];
         let draftEvents = [];
@@ -394,7 +399,7 @@
             "UCL": "🏆 Лига Чемпионов"
         };
 
-        // --- CUSTOM MODALS & ADMIN LOGIC ---
+        // --- ЛОГИКА АДМИНА И МОДАЛЬНЫЕ ОКНА ---
         function checkAdmin() {
             if (localStorage.getItem('bt_admin_access') === '1111111') return true;
             
@@ -471,7 +476,7 @@
             }
         }
 
-        // --- SUPABASE SYNC LOGIC ---
+        // --- СИНХРОНИЗАЦИЯ SUPABASE ---
         let realtimeChannel = null;
 
         async function initDataListeners() {
@@ -487,7 +492,6 @@
             }
 
             try {
-                // Первичная загрузка данных из таблицы app_state (id=1)
                 const { data, error } = await supabaseClient.from('app_state').select('*').eq('id', 1).single();
                 
                 if (error && error.code !== 'PGRST116') {
@@ -511,7 +515,6 @@
                 renderDashboard();
                 document.getElementById('loading').style.display = 'none';
 
-                // Подписка на обновления в реальном времени (WebSockets)
                 if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
                 
                 realtimeChannel = supabaseClient.channel('public:app_state')
@@ -521,10 +524,12 @@
                             bets = payload.new.bets || [];
                             renderDashboard();
                             
-                            // Обновляем список стратегий в форме добавления ставки, если открыта эта вкладка
                             if (document.getElementById('tab-add-bet').classList.contains('active')) {
                                 const stratSelect = document.getElementById('f-strategy');
-                                if(stratSelect) stratSelect.innerHTML = strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                                if(stratSelect) {
+                                    const strats = getSortedStrategiesWithStats();
+                                    stratSelect.innerHTML = strats.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                                }
                             }
                         }
                     })
@@ -542,7 +547,6 @@
             
             if (supabaseClient) {
                 try {
-                    // Перезаписываем единый документ с состоянием приложения
                     const { error } = await supabaseClient
                         .from('app_state')
                         .upsert({ id: 1, strategies: strategies, bets: bets });
@@ -559,7 +563,7 @@
             }
         }
 
-        // --- NAVIGATION ---
+        // --- НАВИГАЦИЯ ---
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             const tabElement = document.getElementById(`tab-${tabId}`);
@@ -578,7 +582,35 @@
             if (tabId === 'add-bet') initAddBetForm();
         }
 
-        // --- DASHBOARD LOGIC ---
+        // --- ЛОГИКА ДАШБОРДА И СОРТИРОВКИ ---
+        
+        function getSortedStrategiesWithStats() {
+            const stratsWithStats = strategies.map(s => {
+                const sBets = bets.filter(b => b.strategyId === s.id);
+                let p = 0;
+                let activeStakes = 0;
+                sBets.forEach(b => {
+                    if (b.status === 'Win') p += (b.stake * b.odds) - b.stake;
+                    else if (b.status === 'Loss') p -= b.stake;
+                    else if (b.status === 'Active') activeStakes += b.stake;
+                });
+                // Math.round для избежания багов с плавающей точкой
+                const currentBank = Math.round(((parseFloat(s.bank) || 0) + p - activeStakes) * 100) / 100;
+                return { ...s, currentBank, sBetsLength: sBets.length, p };
+            });
+
+            // Сортировка: проигранные (<= 0) уходят в конец
+            stratsWithStats.sort((a, b) => {
+                const aLost = a.currentBank <= 0;
+                const bLost = b.currentBank <= 0;
+                if (aLost && !bLost) return 1;
+                if (!aLost && bLost) return -1;
+                return b.currentBank - a.currentBank; // Вторичная сортировка по размеру банка
+            });
+
+            return stratsWithStats;
+        }
+
         function renderDashboard() {
             renderStrategyChips();
             renderStrategyTable();
@@ -589,9 +621,25 @@
         function renderStrategyChips() {
             const container = document.getElementById('strategy-chips');
             if (!container) return;
-            let html = `<button onclick="setFilter('all')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}">ВСЕ СТРАТЕГИИ</button>`;
-            strategies.forEach(s => {
-                html += `<button onclick="setFilter('${s.id}')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === s.id ? 'bg-accent text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}">${s.name}</button>`;
+
+            const strats = getSortedStrategiesWithStats();
+
+            let html = `<button onclick="setFilter('all')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentFilter === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}">ВСЕ СТРАТЕГИИ</button>`;
+            
+            strats.forEach(s => {
+                const isLost = s.currentBank <= 0;
+                let btnClass = '';
+                
+                if (currentFilter === s.id) {
+                    btnClass = isLost ? 'bg-loss text-white shadow-lg' : 'bg-accent text-white shadow-lg';
+                } else {
+                    btnClass = isLost ? 'bg-white text-loss border border-rose-200 hover:bg-rose-50' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50';
+                }
+                
+                // Зачеркиваем название, если стратегия слита и не выбрана активно
+                const nameStyle = isLost && currentFilter !== s.id ? 'line-through opacity-80' : '';
+
+                html += `<button onclick="setFilter('${s.id}')" class="px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${btnClass}"><span class="${nameStyle}">${s.name}</span></button>`;
             });
             container.innerHTML = html;
         }
@@ -619,31 +667,30 @@
                 }
             });
 
-            // Calculate active stakes for current Bank
             const activeStakes = filteredBets.filter(b => b.status === 'Active').reduce((acc, b) => acc + b.stake, 0);
-            const currentBank = initialBank + profit - activeStakes;
+            const currentBank = Math.round((initialBank + profit - activeStakes) * 100) / 100;
 
             const wr = (wins + losses) > 0 ? (wins / (wins + losses) * 100).toFixed(1) : 0;
             const roi = totalStaked > 0 ? (profit / totalStaked * 100).toFixed(1) : 0;
 
+            // Обновление карточек KPI с учетом отрицательных значений
             const statInitialEl = document.getElementById('stat-initial');
             if (statInitialEl) {
-                statInitialEl.innerHTML = `${initialBank.toLocaleString()} <span class="text-slate-300 mx-1 font-normal">/</span> <span class="text-accent">${currentBank.toLocaleString()} ₴</span>`;
+                const cbSign = currentBank < 0 ? '-' : '';
+                statInitialEl.innerHTML = `${initialBank.toLocaleString()} <span class="text-slate-300 mx-1 font-normal">/</span> <span class="font-bold ${currentBank <= 0 ? 'text-loss' : 'text-accent'}">${cbSign}${Math.abs(currentBank).toLocaleString()} ₴</span>`;
             }
             
             const profitEl = document.getElementById('stat-profit');
             if (profitEl) {
-                profitEl.innerText = `${profit > 0 ? '+' : ''}${Math.abs(profit).toLocaleString()} ₴`;
-                profitEl.className = `text-xl font-bold ${profit > 0 ? 'text-win' : (profit < 0 ? 'text-loss' : 'text-slate-800')}`;
+                const pSign = profit > 0 ? '+' : (profit < 0 ? '-' : '');
+                profitEl.innerText = `${pSign}${Math.abs(profit).toLocaleString()} ₴`;
+                profitEl.className = `text-2xl font-bold ${profit > 0 ? 'text-win' : (profit < 0 ? 'text-loss' : 'text-slate-800')}`;
             }
 
-            const statWinrateEl = document.getElementById('stat-winrate');
-            if (statWinrateEl) statWinrateEl.innerText = wr + '%';
-            
-            const statRoiEl = document.getElementById('stat-roi');
-            if (statRoiEl) statRoiEl.innerText = roi + '%';
+            document.getElementById('stat-winrate').innerText = wr + '%';
+            document.getElementById('stat-roi').innerText = (roi > 0 ? '+' : (roi < 0 ? '-' : '')) + Math.abs(roi) + '%';
 
-            // Global Bank
+            // Глобальный банк
             const totalInitial = strategies.reduce((acc, s) => acc + (parseFloat(s.bank) || 0), 0);
             let totalProfit = 0;
             let totalActiveStakes = 0;
@@ -652,8 +699,14 @@
                 else if(b.status === 'Loss') totalProfit -= b.stake;
                 else if(b.status === 'Active') totalActiveStakes += b.stake;
             });
+            
+            const globalBankVal = Math.round((totalInitial + totalProfit - totalActiveStakes) * 100) / 100;
             const globalBankEl = document.getElementById('global-bank');
-            if (globalBankEl) globalBankEl.innerText = `${(totalInitial + totalProfit - totalActiveStakes).toLocaleString()} ₴`;
+            if (globalBankEl) {
+                const gSign = globalBankVal < 0 ? '-' : '';
+                globalBankEl.innerText = `${gSign}${Math.abs(globalBankVal).toLocaleString()} ₴`;
+                globalBankEl.className = `text-2xl font-mono font-bold ${globalBankVal <= 0 ? 'text-loss' : 'text-accent'}`;
+            }
 
             updateCharts(resolved, wins, losses, refunds, profit);
         }
@@ -670,7 +723,8 @@
 
             const lineChartValEl = document.getElementById('chart-line-val');
             if (lineChartValEl) {
-                lineChartValEl.innerText = `Итог: ${currentProfit.toLocaleString()} ₴`;
+                const pSign = currentProfit > 0 ? '+' : (currentProfit < 0 ? '-' : '');
+                lineChartValEl.innerText = `Итог: ${pSign}${Math.abs(currentProfit).toLocaleString()} ₴`;
             }
 
             const mainChartCanvas = document.getElementById('mainChart');
@@ -700,7 +754,7 @@
             if (pieLegendEl) {
                 pieLegendEl.innerHTML = `
                     <div class="text-win">Побед: ${wins}</div>
-                    <div class="text-loss">Проигрыш: ${losses}</div>
+                    <div class="text-loss">Минус: ${losses}</div>
                     <div class="text-slate-400">Возврат: ${refunds}</div>
                 `;
             }
@@ -723,7 +777,7 @@
             }
         }
 
-        // --- HISTORY RENDER ---
+        // --- ИСТОРИЯ И ПРОТОКОЛ ---
         function renderHistory() {
             const body = document.getElementById('bets-table-body');
             if (!body) return;
@@ -747,17 +801,22 @@
                       </div>`
                     : `<div class="flex items-center justify-end gap-3">${statusBadge}<button onclick="undoBet(${b.id})" class="text-slate-300 hover:text-accent">✏️</button></div>`;
 
-                const eventStr = b.events ? b.events.map(e => `${e.t1} - ${e.t2}`).join('<br>') : 'Неизвестно';
-                const forecastStr = b.events ? (b.events.length > 1 ? 'Экспресс' : b.events[0].forecast) : 'N/A';
+                const eventStr = b.events ? `<div class="flex flex-col gap-2">` + b.events.map(e => {
+                    return `<div class="flex items-center min-h-[28px] font-bold text-slate-800 text-[13px]">${e.t1} - ${e.t2}</div>`;
+                }).join('') + `</div>` : '<div class="font-bold text-slate-800">Неизвестно</div>';
+                
+                const forecastStr = b.events ? `<div class="flex flex-col items-center gap-2">` + b.events.map(e => {
+                    return `<div class="flex items-center min-h-[28px]"><span class="text-[11px] font-black text-accent bg-blue-50 px-3 py-1 rounded-md border border-blue-200/60 shadow-sm leading-none tracking-wide">${e.forecast}</span></div>`;
+                }).join('') + `</div>` : 'N/A';
 
                 return `
                     <tr class="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
                         <td class="px-6 py-4">
-                            <div class="font-bold text-slate-800">${eventStr}</div>
-                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">${b.league || ''} • ${b.date}</div>
+                            ${eventStr}
+                            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">${b.league || ''} • ${b.date}</div>
                         </td>
                         <td class="px-6 py-4 text-slate-500 text-xs font-medium uppercase tracking-tighter">${sName}</td>
-                        <td class="px-6 py-4 text-center font-black text-accent">${forecastStr}</td>
+                        <td class="px-6 py-4 text-center">${forecastStr}</td>
                         <td class="px-6 py-4 text-center font-mono font-bold">${b.odds.toFixed(2)}</td>
                         <td class="px-6 py-4 text-center font-bold text-slate-700">${b.stake.toLocaleString()} ₴</td>
                         <td class="px-6 py-4 text-right">${actionHtml}</td>
@@ -786,29 +845,29 @@
             }
         }
 
-        // --- STRATEGY TABLE ---
+        // --- ТАБЛИЦА СТРАТЕГИЙ ---
         function renderStrategyTable() {
             const body = document.getElementById('strategy-table-body');
             if (!body) return;
-            body.innerHTML = strategies.map(s => {
-                const sBets = bets.filter(b => b.strategyId === s.id);
-                let p = 0;
-                let activeStakes = 0;
-                sBets.forEach(b => {
-                    if (b.status === 'Win') p += (b.stake * b.odds) - b.stake;
-                    else if (b.status === 'Loss') p -= b.stake;
-                    else if (b.status === 'Active') activeStakes += b.stake;
-                });
-                const currentBank = (parseFloat(s.bank) || 0) + p - activeStakes;
+
+            const strats = getSortedStrategiesWithStats();
+
+            body.innerHTML = strats.map(s => {
+                const isLost = s.currentBank <= 0;
+                const rowClass = isLost ? 'bg-rose-50/50 border-b border-rose-100' : 'hover:bg-slate-50/50 border-b border-slate-50';
+                const nameClass = isLost ? 'text-loss line-through opacity-70' : 'text-slate-800';
+                
+                const bankSign = s.currentBank < 0 ? '-' : '';
+                const bankColor = s.currentBank <= 0 ? 'text-loss' : (s.p > 0 ? 'text-win' : 'text-slate-800');
                 
                 return `
-                    <tr class="hover:bg-slate-50/50 border-b border-slate-50">
-                        <td class="px-6 py-4 font-bold text-slate-800 uppercase tracking-tighter italic">${s.name}</td>
+                    <tr class="${rowClass} transition-colors">
+                        <td class="px-6 py-4 font-bold ${nameClass} uppercase tracking-tighter italic">${s.name}</td>
                         <td class="px-6 py-4">
-                            <span class="text-slate-400 text-xs">${s.bank.toLocaleString()}</span> / 
-                            <span class="font-bold ${p >= 0 ? 'text-win' : 'text-loss'}">${currentBank.toLocaleString()} ₴</span>
+                            <span class="text-slate-400 text-xs">${parseFloat(s.bank).toLocaleString()}</span> / 
+                            <span class="font-bold ${bankColor}">${bankSign}${Math.abs(s.currentBank).toLocaleString()} ₴</span>
                         </td>
-                        <td class="px-6 py-4 text-slate-500 font-bold text-center">${sBets.length}</td>
+                        <td class="px-6 py-4 text-slate-500 font-bold text-center">${s.sBetsLength}</td>
                         <td class="px-6 py-4 text-right space-x-3">
                             <button onclick="openStrategyModal('${s.id}')" class="text-slate-400 hover:text-accent">✏️</button>
                             <button onclick="confirmDeleteStrategy('${s.id}')" class="text-slate-400 hover:text-loss ml-2">🗑️</button>
@@ -856,6 +915,13 @@
             } else {
                 strategies.push({ id: 's' + Date.now(), name: name.toUpperCase(), bank });
             }
+            
+            const stratSelect = document.getElementById('f-strategy');
+            if(stratSelect) {
+                const strats = getSortedStrategiesWithStats();
+                stratSelect.innerHTML = strats.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            }
+            
             saveToCloud();
             closeStrategyModal();
             renderDashboard();
@@ -871,12 +937,14 @@
             });
         }
 
-        // --- ADD BET LOGIC ---
+        // --- ДОБАВЛЕНИЕ СТАВКИ ---
         function initAddBetForm() {
             const stratSelect = document.getElementById('f-strategy');
-            if(stratSelect) stratSelect.innerHTML = strategies.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            if(stratSelect) {
+                const strats = getSortedStrategiesWithStats();
+                stratSelect.innerHTML = strats.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+            }
             
-            // Если данные Live линии уже загружены, обновляем матчи
             if (Object.keys(liveLineData).length > 0) {
                 updateMatches();
             }
@@ -896,8 +964,8 @@
             
             if(type === 'Экспресс') {
                 if(boxTitle) boxTitle.innerText = "Конструктор Экспресса";
-                if(badge) badge.classList.add('hidden'); // Скрываем верхний
-                if(badgeBottom) badgeBottom.classList.remove('hidden'); // Показываем нижний
+                if(badge) badge.classList.add('hidden'); 
+                if(badgeBottom) badgeBottom.classList.remove('hidden'); 
             } else {
                 if(boxTitle) boxTitle.innerText = "Одиночное событие";
                 if(badge) badge.classList.add('hidden');
@@ -1034,12 +1102,24 @@
                 return;
             }
 
+            // БЛОКИРОВКА СТАВКИ (Защита банка)
+            const strategyId = document.getElementById('f-strategy').value;
+            const strats = getSortedStrategiesWithStats();
+            const strat = strats.find(s => s.id === strategyId);
+            
+            if (strat) {
+                if (stake > strat.currentBank) {
+                    showAlert(`Недоступно! Текущий банк стратегии: ${strat.currentBank.toLocaleString()} ₴. Вы не можете поставить больше этой суммы.`);
+                    return;
+                }
+            }
+
             let finalOdds = 1.0;
             draftEvents.forEach(ev => finalOdds *= ev.odds);
 
             const newBet = {
                 id: Date.now(),
-                strategyId: document.getElementById('f-strategy').value,
+                strategyId: strategyId,
                 type: type,
                 events: [...draftEvents],
                 odds: finalOdds,
@@ -1057,7 +1137,7 @@
             switchTab('dashboard');
         }
 
-        // --- LIVE AUTO-RESOLVE & FETCH MOCK ---
+        // --- МУЛЯЖ LIVE ЛИНИИ И АВТОРАСЧЕТ ---
         async function fetchLiveLine() {
             const btn = document.getElementById('btn-fetch-line');
             const originalText = btn.innerHTML;
@@ -1115,7 +1195,7 @@
 
             const btn = document.getElementById('btn-auto-resolve');
             const originalText = btn.innerHTML;
-            btn.innerHTML = `<span class="animate-spin inline-block text-sm">↻</span> Сверка с Flashscore...`;
+            btn.innerHTML = `<span class="animate-spin inline-block text-sm">↻</span> Сверка...`;
             btn.disabled = true;
 
             await new Promise(resolve => setTimeout(resolve, 1500));
@@ -1144,9 +1224,9 @@
             if (resolvedCount > 0) {
                 saveToCloud(); 
                 renderDashboard();
-                showAlert(`Авто-расчет завершен! Рассчитано событий: ${resolvedCount}. Побед: ${winCount}, Поражений: ${lossCount}.`);
+                showAlert(`Авто-расчет завершен! Рассчитано: ${resolvedCount}. Win: ${winCount}, Loss: ${lossCount}.`);
             } else {
-                showAlert("Матчи еще идут. Ни одно из активных событий пока не завершилось.");
+                showAlert("Матчи еще идут. Ни одно событие не завершилось.");
             }
         }
 
