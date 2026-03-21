@@ -113,8 +113,8 @@
                 <div class="overflow-hidden flex-1">
                     <p class="text-[10px] font-bold text-white truncate" id="user-email">email</p>
                     <div class="flex items-center gap-1 mt-0.5">
-                        <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                        <span class="text-[8px] text-emerald-400 uppercase font-black tracking-widest">Online</span>
+                        <span id="sync-dot" class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                        <span id="sync-text" class="text-[8px] text-emerald-400 uppercase font-black tracking-widest">Online</span>
                     </div>
                 </div>
             </div>
@@ -531,9 +531,14 @@
         function initAuthListener() {
             if (!supabaseClient) {
                 document.getElementById('auth-screen').style.display = 'none';
-                document.getElementById('user-email').innerText = "Локальный режим";
-                document.getElementById('sync-text').innerText = 'ОФФЛАЙН';
-                document.getElementById('sync-dot').className = 'w-2 h-2 bg-slate-400 rounded-full';
+                
+                const userEmailEl = document.getElementById('user-email');
+                if (userEmailEl) userEmailEl.innerText = "Локальный режим";
+                
+                const syncTextEl = document.getElementById('sync-text');
+                const syncDotEl = document.getElementById('sync-dot');
+                if (syncTextEl) syncTextEl.innerText = 'ОФФЛАЙН';
+                if (syncDotEl) syncDotEl.className = 'w-1.5 h-1.5 bg-slate-400 rounded-full';
                 
                 strategies = JSON.parse(localStorage.getItem('bt_local_strats_v7')) || [{ id: 's1', name: 'ОСНОВНОЙ БАНК', bank: 10000 }];
                 bets = JSON.parse(localStorage.getItem('bt_local_bets_v7')) || [];
@@ -547,9 +552,14 @@
             supabaseClient.auth.onAuthStateChange((event, session) => {
                 if (session) {
                     currentUser = session.user;
-                    document.getElementById('user-email').innerText = currentUser.email.split('@')[0];
-                    document.getElementById('sync-text').innerText = 'ONLINE (CLOUD)';
-                    document.getElementById('sync-dot').className = 'w-2 h-2 bg-emerald-400 rounded-full animate-pulse';
+                    
+                    const userEmailEl = document.getElementById('user-email');
+                    if (userEmailEl) userEmailEl.innerText = currentUser.email.split('@')[0];
+                    
+                    const syncTextEl = document.getElementById('sync-text');
+                    const syncDotEl = document.getElementById('sync-dot');
+                    if (syncTextEl) syncTextEl.innerText = 'ONLINE (CLOUD)';
+                    if (syncDotEl) syncDotEl.className = 'w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse';
                     
                     document.getElementById('auth-screen').style.opacity = '0';
                     setTimeout(() => { document.getElementById('auth-screen').style.display = 'none'; }, 500);
