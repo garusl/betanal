@@ -423,9 +423,9 @@
 
     <div id="alert-modal" class="custom-modal z-[3000]">
         <div class="bg-white rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl text-center">
-            <div class="text-5xl mb-4">ℹ️</div>
-            <h3 class="text-xl font-bold text-slate-800 mb-2">Уведомление</h3>
-            <p id="alert-text" class="text-slate-500 mb-8 text-sm leading-relaxed"></p>
+            <div class="text-5xl mb-4 text-accent">ℹ️</div>
+            <h3 class="text-xl font-bold text-slate-800 mb-4">Уведомление</h3>
+            <p id="alert-text" class="text-slate-600 mb-8 text-sm leading-relaxed whitespace-pre-line"></p>
             <button onclick="closeAlertModal()" class="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-all">Понятно</button>
         </div>
     </div>
@@ -679,11 +679,12 @@
                 } else {
                     strategies = [{ id: 's1', name: 'ОСНОВНОЙ БАНК', bank: 10000 }];
                     bets = [];
-                    await supabaseClient.from('user_data').insert([{ user_id: currentUser.id, strategies, bets }]);
+                    const { error: insertError } = await supabaseClient.from('user_data').insert([{ user_id: currentUser.id, strategies, bets }]);
+                    if (insertError) throw insertError;
                 }
             } catch (err) {
-                console.error(err);
-                showAlert("Внимание: Не удалось загрузить данные из облака. \n\n1. Проверьте, создали ли вы таблицу user_data в SQL Editor.\n2. Пока таблица не создана, ставки будут сохраняться локально.");
+                console.error("Ошибка загрузки данных:", err);
+                showAlert(`Внимание: Ошибка базы данных (${err.code || 'Неизвестно'}).\nОписание: ${err.message}\n\nПожалуйста, убедитесь, что вы выполнили SQL-запрос для создания таблицы user_data в Supabase!`);
             } finally {
                 document.getElementById('loading').style.display = 'none';
                 initSlipStrategy();
@@ -704,7 +705,7 @@
                     if (error) throw error;
                 } catch(e) {
                     console.error("Save error:", e);
-                    // Silent fail to local storage if cloud fails
+                    showAlert(`Ошибка сохранения: ${e.message}`);
                     localStorage.setItem('bt_local_strats_v7', JSON.stringify(strategies));
                     localStorage.setItem('bt_local_bets_v7', JSON.stringify(bets));
                 }
