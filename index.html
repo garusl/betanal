@@ -529,11 +529,11 @@
         };
 
         const mockLeaderboard = [
-            { name: 'Alex_ProBet', winrate: 62.5, profit: 45000, trend: 'up' },
-            { name: 'FootballKing99', winrate: 58.0, profit: 21000, trend: 'up' },
-            { name: 'SafePlay_UA', winrate: 68.2, profit: 12500, trend: 'flat' },
-            { name: 'RiskTaker_X', winrate: 45.1, profit: -8000, trend: 'down' },
-            { name: 'User_492 (Вы)', winrate: 0.0, profit: 0, trend: 'flat', isMe: true }
+            { name: 'Alex_ProBet', winrate: 62.5, profit: 45000, roi: 18.4 },
+            { name: 'FootballKing99', winrate: 58.0, profit: 21000, roi: 12.1 },
+            { name: 'SafePlay_UA', winrate: 68.2, profit: 12500, roi: 8.5 },
+            { name: 'User_492', winrate: 42.0, profit: 5400, roi: 5.2, isMe: true },
+            { name: 'RiskTaker_X', winrate: 45.1, profit: -8000, roi: -12.4 }
         ];
 
         // ==========================================
@@ -656,12 +656,19 @@
 
             errorEl.classList.add('hidden');
             
-            btnLogin.disabled = true; btnReg.disabled = true;
+            // Блокируем обе кнопки во время запроса
+            btnLogin.disabled = true; 
+            btnReg.disabled = true;
+            
             const originalLoginText = btnLogin.innerHTML;
             const originalRegText = btnReg.innerHTML;
 
-            if (action === 'register') btnReg.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
-            else btnLogin.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
+            // Вешаем спиннер на ту кнопку, которую нажали
+            if (action === 'register') {
+                btnReg.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
+            } else {
+                btnLogin.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
+            }
             
             try {
                 let error;
@@ -697,8 +704,11 @@
                 errorEl.innerText = "Сетевая ошибка: " + err.message;
                 errorEl.classList.remove('hidden');
             } finally {
-                btnLogin.disabled = false; btnReg.disabled = false;
-                btnLogin.innerHTML = originalLoginText; btnReg.innerHTML = originalRegText;
+                // Возвращаем кнопкам исходный вид
+                btnLogin.disabled = false; 
+                btnReg.disabled = false;
+                btnLogin.innerHTML = originalLoginText;
+                btnReg.innerHTML = originalRegText;
             }
         }
 
@@ -1845,15 +1855,19 @@
 
             tbody.innerHTML = sortedBoard.map((player, index) => {
                 const rankClass = index === 0 ? 'text-yellow-500 font-black text-2xl' : (index === 1 ? 'text-slate-400 font-black text-xl' : (index === 2 ? 'text-amber-700 font-black text-lg' : 'text-slate-500 font-bold'));
-                const bgClass = player.isMe ? 'bg-blue-50/50 border-l-4 border-accent' : 'hover:bg-slate-50 transition-colors border-l-4 border-transparent';
+                
+                const isActuallyMe = player.isMe && currentUser !== null;
+                const bgClass = isActuallyMe ? 'bg-blue-50/50 border-l-4 border-accent' : 'hover:bg-slate-50 transition-colors border-l-4 border-transparent';
+                const displayName = isActuallyMe ? `${player.name} (Вы)` : player.name;
+                const subtitle = isActuallyMe ? 'Ваш профиль' : 'Pro Bettor';
                 
                 return `
                     <tr class="border-b border-slate-50 ${bgClass}">
                         <td class="px-6 py-4 flex items-center gap-4">
                             <span class="${rankClass} w-8 text-center">#${index + 1}</span>
                             <div>
-                                <div class="font-bold text-slate-800">${player.name}</div>
-                                <div class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">${player.isMe ? 'Ваш профиль' : 'Pro Bettor'}</div>
+                                <div class="font-bold text-slate-800">${displayName}</div>
+                                <div class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">${subtitle}</div>
                             </div>
                         </td>
                         <td class="px-6 py-4 text-center font-mono font-bold ${player.roi > 0 ? 'text-win' : (player.roi < 0 ? 'text-loss' : 'text-slate-600')}">
@@ -1866,7 +1880,7 @@
                             ${player.profit > 0 ? '+' : ''}${player.profit.toLocaleString()} ₴
                         </td>
                         <td class="px-6 py-4 text-right space-x-2">
-                            ${!player.isMe ? `
+                            ${!isActuallyMe ? `
                                 <button onclick="analyzePlayerWithAI('${player.name}', ${player.winrate}, ${player.roi || 0}, ${player.profit})" class="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
                                     🕵️‍♂️ ИИ-Анализ
                                 </button>
@@ -1878,19 +1892,27 @@
         }
 
         function updateLeaderboardMe() {
-            let profit = 0, wins = 0, losses = 0, totalStaked = 0;
-            const resolved = bets.filter(b => b.status !== 'Active');
-            resolved.forEach(b => {
-                totalStaked += b.stake;
-                if (b.status === 'Win') { wins++; profit += (b.stake * b.odds) - b.stake; } 
-                else if (b.status === 'Loss') { losses++; profit -= b.stake; } 
-            });
-
             const meIndex = mockLeaderboard.findIndex(p => p.isMe);
             if (meIndex > -1) {
-                mockLeaderboard[meIndex].winrate = (wins + losses) > 0 ? (wins / (wins + losses) * 100) : 0;
-                mockLeaderboard[meIndex].roi = totalStaked > 0 ? (profit / totalStaked * 100) : 0;
-                mockLeaderboard[meIndex].profit = Math.round(profit);
+                if (currentUser) {
+                    let profit = 0, wins = 0, losses = 0, totalStaked = 0;
+                    const resolved = bets.filter(b => b.status !== 'Active');
+                    resolved.forEach(b => {
+                        totalStaked += b.stake;
+                        if (b.status === 'Win') { wins++; profit += (b.stake * b.odds) - b.stake; } 
+                        else if (b.status === 'Loss') { losses++; profit -= b.stake; } 
+                    });
+
+                    mockLeaderboard[meIndex].name = currentUser.email.split('@')[0];
+                    mockLeaderboard[meIndex].winrate = (wins + losses) > 0 ? (wins / (wins + losses) * 100) : 0;
+                    mockLeaderboard[meIndex].roi = totalStaked > 0 ? (profit / totalStaked * 100) : 0;
+                    mockLeaderboard[meIndex].profit = Math.round(profit);
+                } else {
+                    mockLeaderboard[meIndex].name = 'User_492';
+                    mockLeaderboard[meIndex].winrate = 42.0;
+                    mockLeaderboard[meIndex].roi = 5.2;
+                    mockLeaderboard[meIndex].profit = 5400;
+                }
             }
             renderLeaderboard();
         }
