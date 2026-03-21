@@ -47,15 +47,17 @@
 
 <body class="flex flex-col lg:flex-row h-screen overflow-hidden bg-[#f8fafc]">
 
-    <!-- AUTHENTICATION SCREEN -->
-    <div id="auth-screen" class="fixed inset-0 z-[2000] auth-bg flex items-center justify-center p-4 transition-opacity duration-500">
+    <!-- AUTHENTICATION SCREEN (Modal Style) -->
+    <div id="auth-screen" class="hidden fixed inset-0 z-[2000] auth-bg items-center justify-center p-4 transition-opacity duration-500 opacity-0">
         <div class="bg-white rounded-3xl p-8 md:p-10 w-full max-w-md shadow-2xl relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-accent to-neon"></div>
             
-            <div class="text-center mb-8">
+            <button type="button" onclick="hideAuthScreen()" class="absolute top-4 right-5 text-slate-400 hover:text-slate-800 text-3xl font-bold transition-colors">&times;</button>
+            
+            <div class="text-center mb-8 mt-2">
                 <div class="inline-flex items-center justify-center w-16 h-16 bg-slate-100 rounded-full mb-4 text-3xl shadow-inner">📈</div>
                 <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tight">BetTracker <span class="text-accent">Pro</span></h2>
-                <p class="text-slate-500 text-xs font-bold mt-1 uppercase tracking-widest">Аналитический Терминал</p>
+                <p class="text-slate-500 text-xs font-bold mt-1 uppercase tracking-widest">Облачная синхронизация</p>
             </div>
 
             <form id="auth-form" class="space-y-5">
@@ -108,28 +110,41 @@
             </button>
         </nav>
         <div class="p-6 border-t border-slate-800 flex flex-col items-center">
-            <div class="flex items-center gap-3 mb-4 w-full bg-slate-800/50 p-3 rounded-xl border border-slate-700">
-                <div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-sm shadow-inner shrink-0">👤</div>
-                <div class="overflow-hidden flex-1">
-                    <p class="text-[10px] font-bold text-white truncate" id="user-email">email</p>
-                    <div class="flex items-center gap-1 mt-0.5">
-                        <span id="sync-dot" class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                        <span id="sync-text" class="text-[8px] text-emerald-400 uppercase font-black tracking-widest">Online</span>
+            
+            <!-- Профиль Пользователя (Скрыт по умолчанию) -->
+            <div id="user-profile-info" class="w-full hidden">
+                <div class="flex items-center gap-3 mb-4 w-full bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <div class="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-sm shadow-inner shrink-0">👤</div>
+                    <div class="overflow-hidden flex-1">
+                        <p class="text-[10px] font-bold text-white truncate" id="user-email">email</p>
+                        <div class="flex items-center gap-1 mt-0.5">
+                            <span id="sync-dot" class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                            <span id="sync-text" class="text-[8px] text-emerald-400 uppercase font-black tracking-widest">Online</span>
+                        </div>
                     </div>
                 </div>
+                <button onclick="logOut()" class="w-full py-2.5 bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest border border-slate-700 hover:border-rose-500/30">Завершить сеанс</button>
             </div>
-            <button onclick="logOut()" class="w-full py-2.5 bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest border border-slate-700 hover:border-rose-500/30">Завершить сеанс</button>
+
+            <!-- Кнопка Входа (Видна по умолчанию) -->
+            <button id="btn-show-login" onclick="showAuthScreen()" class="w-full py-4 bg-accent hover:bg-blue-600 text-white text-[11px] font-black rounded-xl transition-all uppercase tracking-widest shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2">
+                <span>🔐</span> Войти / Регистрация
+            </button>
+
         </div>
     </aside>
 
     <!-- Мобильная шапка -->
     <div class="md:hidden bg-primary text-white p-4 flex justify-between items-center z-20 shadow-md">
         <h1 class="text-xl font-bold">📈 Tracker</h1>
-        <select onchange="switchTab(this.value)" id="mobile-nav" class="bg-slate-800 text-white border-none rounded p-2 outline-none text-xs font-bold">
-            <option value="dashboard">Дашборд</option>
-            <option value="line">Линия матчей</option>
-            <option value="leaderboard">Рейтинг</option>
-        </select>
+        <div class="flex items-center gap-2">
+            <button id="mobile-login-btn" onclick="showAuthScreen()" class="bg-accent hover:bg-blue-600 px-3 py-2 rounded text-[10px] font-bold uppercase tracking-widest shadow-sm transition-colors">Войти</button>
+            <select onchange="switchTab(this.value)" id="mobile-nav" class="bg-slate-800 text-white border-none rounded p-2 outline-none text-xs font-bold">
+                <option value="dashboard">Дашборд</option>
+                <option value="line">Линия матчей</option>
+                <option value="leaderboard">Рейтинг</option>
+            </select>
+        </div>
     </div>
 
     <!-- 2. ЦЕНТРАЛЬНАЯ КОЛОНКА (Main Content) -->
@@ -530,56 +545,99 @@
 
         function initAuthListener() {
             if (!supabaseClient) {
-                document.getElementById('auth-screen').style.display = 'none';
-                
-                const userEmailEl = document.getElementById('user-email');
-                if (userEmailEl) userEmailEl.innerText = "Локальный режим";
-                
-                const syncTextEl = document.getElementById('sync-text');
-                const syncDotEl = document.getElementById('sync-dot');
-                if (syncTextEl) syncTextEl.innerText = 'ОФФЛАЙН';
-                if (syncDotEl) syncDotEl.className = 'w-1.5 h-1.5 bg-slate-400 rounded-full';
-                
-                strategies = JSON.parse(localStorage.getItem('bt_local_strats_v7')) || [{ id: 's1', name: 'ОСНОВНОЙ БАНК', bank: 10000 }];
-                bets = JSON.parse(localStorage.getItem('bt_local_bets_v7')) || [];
-                
-                initSlipStrategy();
-                renderDashboard();
-                updateLeaderboardMe();
+                setupLocalMode();
                 return;
             }
 
-            supabaseClient.auth.onAuthStateChange((event, session) => {
+            // Проверяем текущую сессию без мерцания экранов
+            supabaseClient.auth.getSession().then(({ data: { session } }) => {
                 if (session) {
-                    currentUser = session.user;
-                    
-                    const userEmailEl = document.getElementById('user-email');
-                    if (userEmailEl) userEmailEl.innerText = currentUser.email.split('@')[0];
-                    
-                    const syncTextEl = document.getElementById('sync-text');
-                    const syncDotEl = document.getElementById('sync-dot');
-                    if (syncTextEl) syncTextEl.innerText = 'ONLINE (CLOUD)';
-                    if (syncDotEl) syncDotEl.className = 'w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse';
-                    
-                    document.getElementById('auth-screen').style.opacity = '0';
-                    setTimeout(() => { document.getElementById('auth-screen').style.display = 'none'; }, 500);
-                    
-                    loadUserData();
+                    handleSession(session);
                 } else {
-                    currentUser = null;
-                    document.getElementById('auth-screen').style.display = 'flex';
-                    document.getElementById('auth-screen').style.opacity = '1';
-                    strategies = [];
-                    bets = [];
+                    setupLocalMode();
                 }
             });
+
+            // Слушаем изменения (вход/выход)
+            supabaseClient.auth.onAuthStateChange((event, session) => {
+                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                    handleSession(session);
+                } else if (event === 'SIGNED_OUT') {
+                    setupLocalMode();
+                }
+            });
+        }
+        
+        function setupLocalMode() {
+            currentUser = null;
+            
+            // UI Updates
+            document.getElementById('user-profile-info').classList.add('hidden');
+            document.getElementById('btn-show-login').classList.remove('hidden');
+            
+            const mobileLoginBtn = document.getElementById('mobile-login-btn');
+            if (mobileLoginBtn) {
+                mobileLoginBtn.innerText = "Войти";
+                mobileLoginBtn.onclick = showAuthScreen;
+                mobileLoginBtn.classList.remove('bg-slate-700');
+                mobileLoginBtn.classList.add('bg-accent');
+            }
+            
+            hideAuthScreen();
+            
+            // Load Local Data
+            strategies = JSON.parse(localStorage.getItem('bt_local_strats_v7')) || [{ id: 's1', name: 'ОСНОВНОЙ БАНК', bank: 10000 }];
+            bets = JSON.parse(localStorage.getItem('bt_local_bets_v7')) || [];
+            
+            initSlipStrategy();
+            renderDashboard();
+            updateLeaderboardMe();
+        }
+
+        function handleSession(session) {
+            currentUser = session.user;
+            
+            // UI Updates
+            document.getElementById('user-profile-info').classList.remove('hidden');
+            document.getElementById('btn-show-login').classList.add('hidden');
+            
+            const userEmailEl = document.getElementById('user-email');
+            if (userEmailEl) userEmailEl.innerText = currentUser.email.split('@')[0];
+            
+            const mobileLoginBtn = document.getElementById('mobile-login-btn');
+            if (mobileLoginBtn) {
+                mobileLoginBtn.innerText = "Выйти";
+                mobileLoginBtn.onclick = logOut;
+                mobileLoginBtn.classList.remove('bg-accent');
+                mobileLoginBtn.classList.add('bg-slate-700');
+            }
+            
+            hideAuthScreen();
+            loadUserData();
+        }
+        
+        function showAuthScreen() {
+            const authScreen = document.getElementById('auth-screen');
+            authScreen.classList.remove('hidden');
+            authScreen.classList.add('flex');
+            // Trigger reflow for animation
+            void authScreen.offsetWidth;
+            authScreen.style.opacity = '1';
+        }
+        
+        function hideAuthScreen() {
+            const authScreen = document.getElementById('auth-screen');
+            authScreen.style.opacity = '0';
+            setTimeout(() => { 
+                authScreen.classList.remove('flex');
+                authScreen.classList.add('hidden'); 
+            }, 500);
         }
 
         async function handleAuth(action) {
             if(!supabaseClient) {
                 showAlert("Supabase не подключен. Включен локальный режим.");
-                document.getElementById('auth-screen').style.display = 'none';
-                initAuthListener();
+                hideAuthScreen();
                 return;
             }
 
@@ -598,19 +656,12 @@
 
             errorEl.classList.add('hidden');
             
-            // Блокируем обе кнопки во время запроса
-            btnLogin.disabled = true; 
-            btnReg.disabled = true;
-            
+            btnLogin.disabled = true; btnReg.disabled = true;
             const originalLoginText = btnLogin.innerHTML;
             const originalRegText = btnReg.innerHTML;
 
-            // Вешаем спиннер на ту кнопку, которую нажали
-            if (action === 'register') {
-                btnReg.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
-            } else {
-                btnLogin.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
-            }
+            if (action === 'register') btnReg.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
+            else btnLogin.innerHTML = `<span class="animate-spin inline-block">↻</span>`;
             
             try {
                 let error;
@@ -618,9 +669,10 @@
                     const res = await supabaseClient.auth.signUp({ email, password });
                     error = res.error;
                     if (!error) {
-                        errorEl.innerText = "Регистрация успешна! Теперь нажмите 'Войти'.";
+                        errorEl.innerText = "Регистрация успешна! Выполняется вход...";
                         errorEl.className = 'text-xs text-win font-bold text-center mt-4';
                         errorEl.classList.remove('hidden');
+                        // No need to manually login, Supabase auto-logs in on successful signup usually
                     }
                 } else {
                     const res = await supabaseClient.auth.signInWithPassword({ email, password });
@@ -632,7 +684,7 @@
                     if(error.message.includes("operation not allowed")) {
                         errorEl.innerHTML = "Авторизация отключена сервером. <br>Включите Email/Password в настройках Supabase -> Authentication -> Providers.";
                     } else if(error.message.includes("Invalid login credentials")) {
-                        errorEl.innerText = "Неверный email или пароль. Попробуйте нажать РЕГИСТРАЦИЯ, если у вас еще нет аккаунта.";
+                        errorEl.innerText = "Неверный email или пароль. Если у вас нет аккаунта - нажмите 'Регистрация'.";
                     } else if(error.message.includes("Email not confirmed") || error.message.includes("Email link")) {
                         errorEl.innerText = "Почта не подтверждена. Отключите 'Confirm email' в настройках Supabase.";
                     } else {
@@ -645,11 +697,8 @@
                 errorEl.innerText = "Сетевая ошибка: " + err.message;
                 errorEl.classList.remove('hidden');
             } finally {
-                // Возвращаем кнопкам исходный вид
-                btnLogin.disabled = false; 
-                btnReg.disabled = false;
-                btnLogin.innerHTML = originalLoginText;
-                btnReg.innerHTML = originalRegText;
+                btnLogin.disabled = false; btnReg.disabled = false;
+                btnLogin.innerHTML = originalLoginText; btnReg.innerHTML = originalRegText;
             }
         }
 
