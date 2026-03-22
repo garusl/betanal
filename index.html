@@ -390,7 +390,7 @@
             </div>
 
             <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center mb-6">
-                <select id="line-league-select" class="w-full md:w-auto flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-accent">
+                <select id="line-league-select" onchange="handleLeagueChange()" class="w-full md:w-auto flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-accent">
                     <option value="EPL">🇬🇧 Англия: Премьер-лига</option>
                     <option value="LaLiga">🇪🇸 Испания: Ла Лига</option>
                     <option value="SerieA">🇮🇹 Италия: Серия А</option>
@@ -500,7 +500,7 @@
     </button>
 
 
-    <!-- CUSTOM MODALS (Обновлен z-index для корректного отображения) -->
+    <!-- CUSTOM MODALS -->
     
     <!-- AI Scout Modal (Leaderboard) -->
     <div id="ai-scout-modal" class="custom-modal z-[3000]">
@@ -610,13 +610,13 @@
         let strategies = [];
         let bets = [];
         
-        // ИЗМЕНЕНО: Загружаем купон (драфт) из localStorage при старте
         let draftEvents = JSON.parse(localStorage.getItem('bt_draft_events')) || [];
+        // ИЗМЕНЕНО: Инициализация кэша линии
+        let liveLineData = JSON.parse(localStorage.getItem('bt_live_line_data')) || {};
         
         let currentFilter = 'all';
         let mainChart = null, doughnutChart = null;
         let expandedMatchIds = new Set(); 
-        let liveLineData = {};
 
         const SUPPORTED_LEAGUES = {
             "EPL": "🇬🇧 Англия: Премьер-лига",
@@ -939,6 +939,13 @@
             if(mobileSelect && mobileSelect.value !== tabId) mobileSelect.value = tabId;
 
             if (tabId === 'cabinet') renderCabinet();
+            // ИЗМЕНЕНО: Отрисовываем кэшированную линию при переходе на вкладку
+            if (tabId === 'line') {
+                const currentLeague = document.getElementById('line-league-select').value;
+                if (currentLeague && liveLineData[currentLeague]) {
+                    renderLeagueLine(currentLeague);
+                }
+            }
         }
 
         // ==========================================
@@ -1248,6 +1255,18 @@
             renderDraftList();
             updateSubmitButton();
         }
+        
+        // ИЗМЕНЕНО: Обработчик изменения лиги в dropdown (чтобы рисовать кэшированные данные)
+        function handleLeagueChange() {
+            const currentLeague = document.getElementById('line-league-select').value;
+            const container = document.getElementById('line-container');
+            
+            if (currentLeague && liveLineData[currentLeague]) {
+                renderLeagueLine(currentLeague);
+            } else {
+                container.innerHTML = '<div class="text-center p-10 text-slate-400 font-medium"><div class="text-4xl mb-3">⚡</div>Выберите лигу и нажмите "Загрузить матчи", чтобы получить актуальную линию коэффициентов.</div>';
+            }
+        }
 
         async function loadLeagueLine() {
             const apiKey = THE_ODDS_API_KEY;
@@ -1324,49 +1343,52 @@
                 }
 
                 liveLineData[leagueCode] = matches;
+                // ИЗМЕНЕНО: сохраняем данные линии в localStorage
+                localStorage.setItem('bt_live_line_data', JSON.stringify(liveLineData));
                 renderLeagueLine(leagueCode);
                 btn.innerHTML = originalText;
                 btn.disabled = false;
 
             } catch (err) {
                 // Фоллбек
-                liveLineData = {
-                    EPL: [ 
-                        { 
-                            id: 'm1', t1: "Брайтон", t2: "Ливерпуль", time: "17:00", league: "EPL", 
-                            odds: { 
-                                "П1": "3.10", "X": "3.60", "П2": "2.20", 
-                                "1X": "1.65", "12": "1.28", "X2": "1.35",
-                                "Ф1(0)": "2.25", "Ф2(0)": "1.60",
-                                "ТБ 2.5": "1.65", "ТМ 2.5": "2.20", 
-                                "ИТБ1 1.5": "2.40", "ИТБ2 1.5": "1.95",
-                                "ОЗ-Да": "1.55", "ОЗ-Нет": "2.35"
-                            } 
-                        },
-                        { 
-                            id: 'm2', t1: "Фулхэм", t2: "Бернли", time: "17:00", league: "EPL", 
-                            odds: { 
-                                "П1": "1.54", "X": "4.40", "П2": "6.50", 
-                                "1X": "1.12", "12": "1.20", "X2": "2.55",
-                                "Ф1(0)": "1.18", "Ф2(0)": "4.80",
-                                "ТБ 2.5": "1.75", "ТМ 2.5": "2.05", 
-                                "ИТБ1 1.5": "1.60", "ИТБ2 1.5": "4.50",
-                                "ОЗ-Да": "1.90", "ОЗ-Нет": "1.85"
-                            } 
-                        },
-                        { 
-                            id: 'm3', t1: "Эвертон", t2: "Челси", time: "19:30", league: "EPL", 
-                            odds: { 
-                                "П1": "3.38", "X": "3.41", "П2": "2.27", 
-                                "1X": "1.65", "12": "1.32", "X2": "1.35",
-                                "Ф1(0)": "2.40", "Ф2(0)": "1.62",
-                                "ТБ 2.5": "1.80", "ТМ 2.5": "2.00", 
-                                "ИТБ1 1.5": "2.65", "ИТБ2 1.5": "2.05",
-                                "ОЗ-Да": "1.65", "ОЗ-Нет": "2.15"
-                            } 
-                        }
-                    ]
-                };
+                liveLineData['EPL'] = [ 
+                    { 
+                        id: 'm1', t1: "Брайтон", t2: "Ливерпуль", time: "17:00", league: "EPL", 
+                        odds: { 
+                            "П1": "3.10", "X": "3.60", "П2": "2.20", 
+                            "1X": "1.65", "12": "1.28", "X2": "1.35",
+                            "Ф1(0)": "2.25", "Ф2(0)": "1.60",
+                            "ТБ 2.5": "1.65", "ТМ 2.5": "2.20", 
+                            "ИТБ1 1.5": "2.40", "ИТБ2 1.5": "1.95",
+                            "ОЗ-Да": "1.55", "ОЗ-Нет": "2.35"
+                        } 
+                    },
+                    { 
+                        id: 'm2', t1: "Фулхэм", t2: "Бернли", time: "17:00", league: "EPL", 
+                        odds: { 
+                            "П1": "1.54", "X": "4.40", "П2": "6.50", 
+                            "1X": "1.12", "12": "1.20", "X2": "2.55",
+                            "Ф1(0)": "1.18", "Ф2(0)": "4.80",
+                            "ТБ 2.5": "1.75", "ТМ 2.5": "2.05", 
+                            "ИТБ1 1.5": "1.60", "ИТБ2 1.5": "4.50",
+                            "ОЗ-Да": "1.90", "ОЗ-Нет": "1.85"
+                        } 
+                    },
+                    { 
+                        id: 'm3', t1: "Эвертон", t2: "Челси", time: "19:30", league: "EPL", 
+                        odds: { 
+                            "П1": "3.38", "X": "3.41", "П2": "2.27", 
+                            "1X": "1.65", "12": "1.32", "X2": "1.35",
+                            "Ф1(0)": "2.40", "Ф2(0)": "1.62",
+                            "ТБ 2.5": "1.80", "ТМ 2.5": "2.00", 
+                            "ИТБ1 1.5": "2.65", "ИТБ2 1.5": "2.05",
+                            "ОЗ-Да": "1.65", "ОЗ-Нет": "2.15"
+                        } 
+                    }
+                ];
+                // ИЗМЕНЕНО: сохраняем данные линии в localStorage
+                localStorage.setItem('bt_live_line_data', JSON.stringify(liveLineData));
+                document.getElementById('line-league-select').value = 'EPL';
                 renderLeagueLine('EPL');
                 showAlert(`Демо-режим (сеть заблокирована). Показаны тестовые матчи.`);
                 btn.innerHTML = originalText; btn.disabled = false;
