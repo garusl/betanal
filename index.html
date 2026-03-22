@@ -502,7 +502,7 @@
     </button>
 
 
-    <!-- CUSTOM MODALS -->
+    <!-- CUSTOM MODALS (Обновлен z-index для корректного отображения) -->
     
     <!-- AI Scout Modal (Leaderboard) -->
     <div id="ai-scout-modal" class="custom-modal z-[3000]">
@@ -639,7 +639,8 @@
         // ==========================================
         window.addEventListener('load', () => {
             initAuthListener();
-            switchTab('main'); // При загрузке показываем Главную
+            const savedTab = localStorage.getItem('bt_active_tab') || 'main';
+            switchTab(savedTab);
         });
 
         function initAuthListener() {
@@ -694,6 +695,9 @@
             initSlipStrategy();
             renderCabinet();
             updateLeaderboardMe();
+
+            const savedTab = localStorage.getItem('bt_active_tab') || 'main';
+            switchTab(savedTab);
         }
 
         function handleSession(session) {
@@ -820,9 +824,9 @@
         }
 
         async function logOut() {
+            localStorage.setItem('bt_active_tab', 'main');
             if(supabaseClient) await supabaseClient.auth.signOut();
             else location.reload();
-            switchTab('main');
         }
 
         // ==========================================
@@ -857,6 +861,9 @@
                 initSlipStrategy();
                 renderCabinet();
                 updateLeaderboardMe();
+
+                const savedTab = localStorage.getItem('bt_active_tab') || 'main';
+                switchTab(savedTab);
             }
         }
 
@@ -918,6 +925,8 @@
         }
 
         function switchTab(tabId) {
+            localStorage.setItem('bt_active_tab', tabId);
+
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             const tabElement = document.getElementById(`tab-${tabId}`);
             if (tabElement) tabElement.classList.add('active');
