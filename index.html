@@ -187,9 +187,9 @@
                         <span class="text-[10px] text-accent bg-blue-50 px-2 py-1 rounded font-black uppercase tracking-widest">Платформа</span>
                         <span class="text-[10px] text-slate-400 font-bold">Сегодня</span>
                     </div>
-                    <h3 class="text-lg font-black text-slate-800 mb-2 leading-tight">BetTracker v7.5: Выход в облако</h3>
+                    <h3 class="text-lg font-black text-slate-800 mb-2 leading-tight">BetTracker v7.6: Синхронизация купона</h3>
                     <p class="text-sm text-slate-500 mb-6 line-clamp-3">
-                        Мы завершили миграцию на инфраструктуру Supabase. Теперь ваши стратегии и история ставок надежно зашифрованы и синхронизируются между всеми вашими устройствами в реальном времени.
+                        Мы обновили функционал системы. Теперь все ваши выбранные исходы сохраняются в кэше браузера. Вы больше не потеряете недооформленную ставку при случайном обновлении страницы!
                     </p>
                     <div class="text-accent text-xs font-bold uppercase tracking-widest hover:underline">Читать далее →</div>
                 </div>
@@ -380,7 +380,7 @@
             </div>
         </div>
 
-        <!-- LINE TAB -->
+        <!-- LINE TAB (FLASHSCORE STYLE) -->
         <div id="tab-line" class="tab-content pb-24">
             <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div>
@@ -500,7 +500,7 @@
     </button>
 
 
-    <!-- CUSTOM MODALS -->
+    <!-- CUSTOM MODALS (Обновлен z-index для корректного отображения) -->
     
     <!-- AI Scout Modal (Leaderboard) -->
     <div id="ai-scout-modal" class="custom-modal z-[3000]">
@@ -609,7 +609,10 @@
         let currentUser = null;
         let strategies = [];
         let bets = [];
-        let draftEvents = [];
+        
+        // ИЗМЕНЕНО: Загружаем купон (драфт) из localStorage при старте
+        let draftEvents = JSON.parse(localStorage.getItem('bt_draft_events')) || [];
+        
         let currentFilter = 'all';
         let mainChart = null, doughnutChart = null;
         let expandedMatchIds = new Set(); 
@@ -1530,6 +1533,9 @@
                 }
             }
 
+            // ИЗМЕНЕНО: сохраняем драфт в localStorage при добавлении
+            localStorage.setItem('bt_draft_events', JSON.stringify(draftEvents));
+
             if (draftEvents.length > 1) {
                 document.querySelector('input[name="bet_type"][value="Экспресс"]').checked = true;
             } else if (draftEvents.length <= 1) {
@@ -1556,6 +1562,9 @@
         function removeFromDraft(id) {
             draftEvents = draftEvents.filter(e => e.id !== id);
             
+            // ИЗМЕНЕНО: сохраняем драфт в localStorage при удалении
+            localStorage.setItem('bt_draft_events', JSON.stringify(draftEvents));
+
             if (draftEvents.length <= 1) {
                 document.querySelector('input[name="bet_type"][value="Ординар"]').checked = true;
             }
@@ -1722,6 +1731,9 @@
             
             if (!keep) {
                 draftEvents = [];
+                // ИЗМЕНЕНО: удаляем сохраненный драфт из памяти
+                localStorage.setItem('bt_draft_events', JSON.stringify(draftEvents));
+                
                 toggleBetUI(); 
                 toggleSlipVisibility(); 
                 
@@ -2029,6 +2041,15 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             initAuthListener();
+            
+            // ИЗМЕНЕНО: Восстановление UI купона из localStorage
+            if (draftEvents.length > 1) {
+                document.querySelector('input[name="bet_type"][value="Экспресс"]').checked = true;
+            } else if (draftEvents.length === 1) {
+                document.querySelector('input[name="bet_type"][value="Ординар"]').checked = true;
+            }
+            toggleBetUI(); 
+            toggleSlipVisibility();
         });
 
     </script>
